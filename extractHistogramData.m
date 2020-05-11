@@ -29,3 +29,16 @@ nrBins = int32(nrBins(:));
 % idealized bin, we need to simulate one extra bin, which is going
 % to be discarded at the end
 lastCalBin = firstCalBin + nrBins;
+
+% If a field called correction.IRF.peak.PosInterp exists, provide that, too
+if isfield(correction, 'IRF') && isfield(correction.IRF, 'peak') && ...
+        isfield(correction.IRF.peak, 'PosInterp')
+    peakPos = correction.IRF.peak.PosInterp(:);
+    % We need to swap the peak position around to make sure that longer
+    % delay in IRF means it gets mmoved forward in time
+    peakPos = max(peakPos) - peakPos;
+else
+    % If the peak position is not worked out yet, set it to zero
+    % This will not correct the skew, but will let the code run
+    peakPos = zeros(1, numberPixels);
+end

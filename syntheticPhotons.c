@@ -42,16 +42,18 @@
 #define	__lastCalBin    	prhs[2]
 #define	__realBinWidth      prhs[3]
 #define	__linearBinWidth    prhs[4]
+#define	__peakPos           prhs[5]
 #define	__outMatrix         plhs[0]
 
 /* Validate inputs */
 void validateInputs(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
     /* Check for proper number of arguments */
-    if (nrhs != 5)
+    if (nrhs != 5 && nrhs != 6)
     { 
-        mexErrMsgIdAndTxt( "MATLAB:syntheticPhotons:invalidNumInputs",
-            "5 input arguments are required, but %d were provided.", nrhs);
+        mexErrMsgIdAndTxt("MATLAB:syntheticPhotons:invalidNumInputs",
+                          "5 or 6 input arguments are required, ", 
+                          "but %d were provided.", nrhs);
     }
 
     if (nlhs > 1)
@@ -88,7 +90,7 @@ void validateInputs(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     if (!mxIsDouble(__linearBinWidth) || mxIsComplex(__linearBinWidth))
     {
         mexErrMsgIdAndTxt( "MATLAB:syntheticPhotons:invalidInputType",
-            "4th input must be a double vector.");
+            "5th input must be a double vector.");
     }
 
     /* Check the array sizes */
@@ -99,7 +101,7 @@ void validateInputs(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt( "MATLAB:max_in_place:wrongInputsSize",
             "2nd dimension of 1st input is not the same as "
-            "number of elements in 2nd, 3rd, and 5th inputs and "
+            "number of elements in 2nd, 3rd or 5th input and "
             "the same as the 2nd dimension of the fourth input.");
     }
 
@@ -109,6 +111,23 @@ void validateInputs(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt( "MATLAB:max_in_place:wrongInputsSize",
             "1st dimension of 1st input is not the same as "
             "the 2nd dimension of the 4th input.");
+    }
+
+    /* Specific check for optional 6th argument peak Pos */
+    if (nrhs == 6)
+    {
+        if (!mxIsDouble(__peakPos) || mxIsComplex(__peakPos))
+        {
+            mexErrMsgIdAndTxt("MATLAB:syntheticPhotons:invalidInputType",
+                "6th input must be a double vector.");
+        }
+
+        if (mxGetN(__inputHist) != mxGetNumberOfElements(__firstCalBin))
+        {
+            mexErrMsgIdAndTxt("MATLAB:max_in_place:wrongInputsSize",
+            "2nd dimension of 1st input is not the same as "
+            "number of elements in 6th input and.");
+        }
     }
 }
 
@@ -133,6 +152,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
                        Matrix of actual TDC bin widths */
     double *linearBinWidth; /* input matrix 
                        Vector of linearized bin widths for each pixel */
+    double *peakPos;        /* input matrix 
+                       Vector of corrected peak positions */
     double randMax;         /* number
                        Highest random number that can be produced */
 
@@ -170,6 +191,21 @@ void mexFunction(int nlhs, mxArray *plhs[],
     /* create pointers to the double arrays in the input matrices  */
     realBinWidth = mxGetPr(__realBinWidth);
     linearBinWidth = mxGetPr(__linearBinWidth);
+    /* Only if 6 input arguments are used */
+    if (nrhs == 6)
+    {
+        peakPos = mxGetPr(__peakPos);
+    }
+    else
+    {
+        mxArray *__zeros;
+        __zeros = mxCreateNumericMatrix((mwSize) numberPixels,
+                                        1,
+                                        mxDOUBLE_CLASS,
+                                        mxREAL);
+        peakPos = (double *) mxGetData(__zeros);
+    }
+
 
     /* create the output matrix */
     __outMatrix = mxCreateNumericMatrix((mwSize) numberBins,
@@ -195,6 +231,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
         firstBin = pixelOffset + firstCalBin[pixel];
         // Index of the last calibrated bin
         lastBin = pixelOffset + lastCalBin[pixel];
+        // Correct the pixel offset with the peak position
+        pixelOffset += peakPos[pixel];
         // Cummulative bin width
         cumBinWidth = 0;
         // Go through a loop bin by bin
