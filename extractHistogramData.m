@@ -14,8 +14,9 @@ realBinWidth = reshape(correction.binWidth, numberPixels, numberBins)';
 XYZimage = reshape(XYZimage, numberPixels, numberBins)';
 
 % Extract idealized bin width
-linBinWidth = reshape(correction.idealBinWidth, numberPixels, numberBins);
-linBinWidth = max(linBinWidth, [], 2);
+%linBinWidth = reshape(correction.idealBinWidth, numberPixels, numberBins);
+%linBinWidth = max(linBinWidth, [], 2);
+linBinWidth = correction.avgBinWidth(:);
 
 % Find the first calibrated bin for each pixel
 [~, firstCalBin] = max(correction.calibratedBins, [], 3);

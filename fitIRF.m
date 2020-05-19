@@ -155,9 +155,13 @@ for i = 1 : numberPixels
     tau0 = 8;
     offset0 = median(pixHist);
     param0 = [h0 * tau0 * exp(1), mu0, sigma0, tau0, offset0];
-    %sif = syntheticIRFphotons(inputHist(:, i), firstCalBin(i), lastCalBin(i), realBinWidth(:, i))
-    %sif = sif / linBinWidth(i)
-    [fit.h(i), fit.mu(i), fit.sigma(i), fit.tau(i), fit.offset(i), fit.exitFlag(i)] = exgfit(param0);
+    % Run the fit
+    [fit.h(i), ...
+        fit.mu(i), ...
+        fit.sigma(i), ...
+        fit.tau(i), ...
+        fit.offset(i), ...
+        fit.exitFlag(i)] = exgfit(param0);
     %fprintf('%d\n', i);
 end
 
@@ -309,3 +313,9 @@ delete(hwaitbar)
 % Assign results to the main structure for future use
 correction.IRF.fit = fit;
 correction.IRF.peak = peak;
+
+
+
+
+%% Run a routine to correct the IRF offset
+correction.IRF.corrected = resampleHistogramPar(correction.IRF.raw);

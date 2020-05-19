@@ -11,7 +11,11 @@
 %   start about location of files and measurement parameters.
 %
 % Outputs:
-%   MAT-file containing struct 'correction' is produced. 
+%   MAT-file containing struct 'correction' is produced. There is a second
+%   mat file produced, which contains the minimum amount of data to perform
+%   the correction. The complete dataset is stored in a file with the
+%   extension ".FULL.MAT", whereas the minimal version just with the
+%   extension ".MAT".
 %   The struct 'correction' contains the following fields:
 %
 %   correction.files                Files of the source datasets and 
@@ -52,6 +56,9 @@
 %   correction.noIRF                (Optional) This field is produced if
 %                                     needed during the IRF correction
 %                                     stage to store the non-corrected data
+%
+%   The fields in the minial version of the corretion struct are:
+%   'calibratedBins', 'binWidth', 'avgBinWidth', and 'IRF.peak.PosInterp'
 %
 %   Four figures are produced, if required:
 %     * Interactive figure that graphically shows the performance of the
@@ -102,6 +109,9 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 % SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+%% Remove the global variable. If it stays in the memory, it will corrupt
+%  the IRF correction routine in this script
+clear global correction
 
 %% Define global variables
 global correction
@@ -205,6 +215,8 @@ if ~isempty(correction.files.IRF)
     fitIRF(correction.IRF.linear);
     % Correct the bin size by the IRF
     correctCDMbyIRF;
+    % Create parameters for FLIM fitting by SlimCurve
+    fitFLIMparam;
 end
 
 
@@ -217,10 +229,33 @@ if ~isempty(correction.files.graphics)
 end
 
 
+
 %% Save the calibration data in a file
+% SAve two files. One adding full. This is a large file with all the data
+% contained within. Then there is another file, which contains the minimum
+% amount of data for faster loading and less memory demand.
+[path, fname, ext] = fileparts(correction.files.binCorrection);
+correction.files.binCorrectionLong = fullfile(path, [fname, '.full' ext]);
+% Make a comment
+fprintf(['Saving results into file %s.\n', ...
+         'This can take a while. Stand by ...\n'], ...
+        correction.files.binCorrectionLong);
+% save the results
+save(correction.files.binCorrectionLong, 'correction', '-v7.3')
+% Get rid of the redunndant variables
+clear path; clear fname; clear ext
+
+% Create a temporary struct that will be used to store correction in a
+% smaller file with just the minimum set of data required for correction
+S.correction.calibratedBins = correction.calibratedBins;
+S.correction.binWidth = correction.binWidth;
+S.correction.avgBinWidth = correction.avgBinWidth;
+S.correction.IRF.peak.PosInterp = correction.IRF.peak.PosInterp;
+S.correction.fitFLIM = correction.fitFLIM;
 % Make a comment
 fprintf(['Saving results into file %s.\n', ...
          'This can take a while. Stand by ...\n'], ...
         correction.files.binCorrection);
 % save the results
-save(correction.files.binCorrection, 'correction', '-v7.3')
+save(correction.files.binCorrection, '-struct', 'S', '-v7.3')
+clear S;
