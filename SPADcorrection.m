@@ -251,6 +251,7 @@ S.correction.calibratedBins = correction.calibratedBins;
 S.correction.binWidth = correction.binWidth;
 S.correction.avgBinWidth = correction.avgBinWidth;
 S.correction.IRF.peak.PosInterp = correction.IRF.peak.PosInterp;
+S.correction.IRF.fit.goodfit = correction.IRF.fit.goodfit;
 S.correction.fitFLIM = correction.fitFLIM;
 % Make a comment
 fprintf(['Saving results into file %s.\n', ...

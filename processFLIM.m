@@ -221,12 +221,14 @@ else
     switch class(setting.FLIMfile)
         case 'char'
             % Check the file actually exists
-            assert(exists(setting.FLIMfile, 'file') == 2, ...
+            assert(exist(setting.FLIMfile, 'file') == 2, ...
                    'FLIM data file %s does not exist.', setting.FLIMfile);
+            % Convert into a cell with the character array
+            setting.FLIMfile = {setting.FLIMfile};
         case 'cell'
             % Check the files actually exists
             for i = 1 : numel(setting.FLIMfile)
-                assert(exists(setting.FLIMfile{i}, 'file') == 2, ...
+                assert(exist(setting.FLIMfile{i}, 'file') == 2, ...
                        'FLIM data file %s does not exist.', ...
                        setting.FLIMfile{i});
             end
@@ -318,8 +320,8 @@ end
 if setting.interactive
     %% Create a figure of a setting dialog questionnaire
     h.f = figure('Units', 'Pixels', 'Position', [200, 200, 340, 470], ...
-                 'Toolbar', 'None', 'Menu', 'None', 'Name', 'fitFLIM', ...
-                 'NumberTitle', 'off');
+                 'Toolbar', 'None', 'Menu', 'None', ...
+                 'Name', 'Process FLIM', 'NumberTitle', 'off');
     % Center the figure
     movegui(h.f, 'center')
     % Create checkboxes, text boxes and radio buttons
@@ -334,12 +336,21 @@ if setting.interactive
                        'Value', setting.saveIRF, ...
                        'Position', [30, 400, 300, 22], ...
                        'String', 'Save accompanying IRF', ...
-                       'Callback', @check_call, 'Enable', 'off');
+                       'Callback', @check_call);
     % Save IRF checkbox comment
     h.t(1) = uicontrol('Style', 'Text', 'Units', 'Pixels', ...
                        'Position', [47, 370, 320, 22], ...
                        'String', '(Requires average IRF)', ...
                        'HorizontalAlignment', 'left', 'Enable', 'off');
+    % Only with average prompts the IRF can be saved. Enable/Disable the
+    % checkbox accordingly.
+	if contains(setting.promptType, 'avg') && setting.saveICS %#ok<ALIGN>
+        h.c(2).Enable = 'on';
+        h.t(1).Enable = 'on';
+    else
+        h.c(2).Enable = 'off';
+        h.t(1).Enable = 'off';
+    end
     % Run L-M fitting checkbox
     h.c(3) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.runLM, ...
@@ -358,25 +369,29 @@ if setting.interactive
                        'Position', [30, 280, 300, 22], ...
                        'String', 'Single exponential', ...
                        'Callback', @fit_call, ...
-                       'Value', strcmp(setting.fitTypes{1}, setting.fitType));
+                       'Value', strcmp(setting.fitTypes{1}, ...
+                                       setting.fitType));
     % Double-exponential fit radio button
     h.o(2) = uicontrol('Style', 'Radiobutton', 'Units', 'Pixels', ...
                        'Position', [30, 250, 300, 22], ...
                        'String', 'Double exponential', ...
                        'Callback', @fit_call, ...
-                       'Value', strcmp(setting.fitTypes{2}, setting.fitType));
+                       'Value', strcmp(setting.fitTypes{2}, ...
+                                       setting.fitType));
     % Triple-exponential fit radio button
     h.o(3) = uicontrol('Style', 'Radiobutton', 'Units', 'Pixels', ...
                        'Position', [30, 220, 300, 22], ...
                        'String', 'Triple exponential', ...
                        'Callback', @fit_call, ...
-                       'Value', strcmp(setting.fitTypes{3}, setting.fitType));
+                       'Value', strcmp(setting.fitTypes{3}, ...
+                                       setting.fitType));
     % Stretched-exponential fit radio button
     h.o(4) = uicontrol('Style', 'Radiobutton', 'Units', 'Pixels', ...
                        'Position', [30, 190, 300, 22], ...
                        'String', 'Stretched exponential', ...
                        'Callback', @fit_call, ...
-                       'Value', strcmp(setting.fitTypes{4}, setting.fitType));
+                       'Value', strcmp(setting.fitTypes{4}, ...
+                                       setting.fitType));
     % Prompt text
     h.t(2) = uicontrol('Style', 'Text', 'Units', 'Pixels', ...
                        'Position', [10, 160, 320, 22], ...
@@ -524,6 +539,9 @@ for i = 1 : numel(setting.FLIMfile)
     load(setting.FLIMfile{i})
     % Run the linearization and skew correction routine
     corrHist = resampleHistogramPar(XYZimage);
+    % binWidth is the average bin width across the range, expressed in
+    % nanoseconds
+    fitResult(i).binWidth = mean(correction.avgBinWidth(:)) * 1e-3;
     % Get the image size
     imSize = size(XYZimage);
     % Check if L-M fitting is required
@@ -605,18 +623,18 @@ for i = 1 : numel(setting.FLIMfile)
             case 'expStretch'
                 % Stretched exponential fitting
                 % amplitude
-                fitResult(i).A = squeeze(fitResult(i).lma_param(2));
+                fitResult(i).A = squeeze(fitResult(i).lma_param(:, :, 2));
                 % lifetime [ps]
-                fitResult(i).tau = squeeze(fitResult(i).lma_param(3));
+                fitResult(i).tau = squeeze(fitResult(i).lma_param(:, :,3));
                 % stretching exponent
-                fitResult(i).H = squeeze(fitResult(i).lma_param(4));
+                fitResult(i).H = squeeze(fitResult(i).lma_param(:, :, 4));
         end
-        % Clean up the transient shape for saving
+        % Save the entire transient
         fitResult(i).transient = ...
-            reshape(fitResult(i).transient', ...
-                    imSize(1), ...
-                    imSize(2), ...
-                    size(fitResult(i).transient, 1));
+            corrHist(:, :, 1 : correction.fitFLIM.fit_end);
+        fitResult.fitFLIM.start = correction.fitFLIM.start;
+        fitResult.fitFLIM.fit_start = correction.fitFLIM.fit_start;
+        fitResult.fitFLIM.fit_end = correction.fitFLIM.fit_end;
     end
 
     %% Save the IRF if this was requested
@@ -630,9 +648,6 @@ for i = 1 : numel(setting.FLIMfile)
         % The prompt needs to be three dimensional
         fitResult(i).prompt = reshape(fitResult(i).prompt, ...
                                       [1 1 numel(fitResult(i).prompt)]);
-        % binWidth is the average bin width across the range, expressed in
-        % nanoseconds
-        fitResult(i).binWidth = mean(correction.avgBinWidth(:)) * 1e-3;
         % Create the file name to save the data
         [path, file] = fileparts(setting.FLIMfile{i});
         fitResult(i).IRFfile = fullfile(path, [file, '.irf.ics']);
@@ -669,8 +684,6 @@ for i = 1 : numel(setting.FLIMfile)
                     fitResult(i).IRFfile, ...
                     fitResult(i).binWidth);
         end
-        % Clean up the prompt shape for saving
-        fitResult(i).prompt = fitResult(i).prompt(:);
     end
 
     %% Save the ICS file for TRI2 analysis if this was requested
@@ -678,13 +691,6 @@ for i = 1 : numel(setting.FLIMfile)
         % Reshape the data for decay analysis
         % Select only the part of the curves that should be fitted
         transient = double(corrHist(:, :, 1 : correction.fitFLIM.fit_end));
-        % Next, check if the range has not been already been calculated, 
-        % e.g. the IRF has not been saved
-        if ~setting.saveIRF
-            % binWidth is the average bin width across the range expressed
-            % in nanoseconds
-            fitResult(i).binWidth = mean(correction.avgBinWidth(:)) * 1e-3;
-        end
         % Range is the time range of the prompt expressed in seconds
         range = fitResult(i).binWidth * size(transient, 3) * 1e-9;
         % Create the file name to save the data
@@ -720,9 +726,12 @@ for i = 1 : numel(setting.FLIMfile)
 
     %% Check if the results should be saved
     if setting.saveLM
-        % Reorder the transient so that it is in a form of a pixel array of
-        % TDC histograms
-        
+        % Store the prompt for display
+        fitResult.fitFLIM.prompt = correction.fitFLIM.(setting.promptType);
+        % Store the prompt range for display
+        fitResult.fitFLIM.timeBin = correction.fitFLIM.timeBin;
+        % Store the good pixel data matrix
+        fitResult.fitFLIM.goodfit = correction.IRF.fit.goodfit;
         % Create the file name to save the data
         [path, file] = fileparts(setting.FLIMfile{i});
         fitResult(i).LMfile = fullfile(path, [file, '.fit.mat']);
