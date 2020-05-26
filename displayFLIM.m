@@ -1,16 +1,94 @@
-% 
-% global ha       % axes handles
-% global hl       % line handles
-% global hu       % uicontrol handles
-% global tac      
-% global fParam
-% global tauImage % Fluorescence lifetime image
-% global stopped  % Cursor stopped flag
-% global hSpin    % Spinner handle
-% global tauLim   % Limits of lifetime
-% global tauCLim  % Limits of lifetime colormap
-
 function displayFLIM(fitResult)
+% displayFLIM displays linearized annd corrected SPAD image data.
+% It produces an interactive figure to display all the fit parameters, the
+% microtime decays, fit residuals, IRF, and fit results.
+%
+% Syntax: fitIRF(fitResult)
+%
+% Inputs:
+%   fitResult       Struct or a character array.
+%                   * Struct fitResult is produced by the function 
+%                     processFLIM.
+%                   * Character array with the link to the (.fit.mat) file
+%   Alternatively, no input has to be provided. Instead, a popup dialog box
+%   asking for the file is going to appear.
+%
+% Outputs:
+%   An interactive figure to play with.
+%
+% Examples:
+%   displayFLIM(fitResult)
+%
+% Other m-files required: createPointer
+% Subfunctions: edit_Callback, pop_Callback, keyhit, mouseclick, mousemove,
+%               mouserelease
+%               
+% MAT-files required: none, but a link to the fit.mat file can be provided
+%
+% See also: processFLIM, SPADcorrection
+
+% Jakub Nedbal
+% King's College London
+% May 2020
+% Last Revision:  26-May-2020 - First working prototype
+%
+% Copyright 2020 Jakub Nedbal
+%
+% Redistribution and use in source and binary forms, with or without
+% modification, are permitted provided that the following conditions are
+% met:
+%
+% 1. Redistributions of source code must retain the above copyright notice,
+% this list of conditions and the following disclaimer.
+%
+% 2. Redistributions in binary form must reproduce the above copyright
+% notice, this list of conditions and the following disclaimer in the
+% documentation and/or other materials provided with the distribution.
+%
+% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+% "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+% TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+% PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+% OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+% EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+% PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+% PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+% LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+% NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+% SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+
+%% Process the input
+% Check if nothing has been supplied
+if nargin == 0
+    % Open a dialog box to select files with the processed FLIM data
+    [file, path] = ...
+        uigetfile({'*.fit.mat', 'FLIM Data Files (*.fit.mat)'; ...
+                   '*.*', 'All Files (*.*)'}, ...
+                  'Select file with processed FLIM measurements');
+    % Check if nothing has been returned
+    if isequal(file, 0) || isequal(path, 0)
+        return
+    end
+    fitResult = fullfile(path, file);
+end
+
+% Check if the input is a struct of a character array with the link to the
+% source file containing the corrected FLIM data
+switch class(fitResult)
+    case 'char'
+        % Character array, presumably containing the link to the file
+        assert(exist(fitResult, 'file') == 2, ...
+               'The file provided ''%s'' does not exist.', fitResult);
+        % Load the file
+        load(fitResult, 'fitResult');
+    case 'struct'
+        % Struct has been provided. Assume that it is OK
+    otherwise
+        error(['Expecting character array or struct, ', ...
+               'received ''%s'' instead.'], class(fitResult));
+end
 
 %% Create titles for lifetime fits
 % Number of fit parameters
@@ -38,22 +116,22 @@ if numel(display.names) == 4 || numel(display.names) == 5
     % Single-exponential situation
     display.names{2} = 'A:';
     display.order(2) = 1;
-    display.graphNames{1} = 'Amplitude A';
+    display.graphNames{2} = 'Amplitude A';
     display.names{3} = [char(964), ':'];
     display.order(3) = 2;
     display.graphNames{3} = ...
         sprintf('Fluorescence Lifetime %s [ps]', char(964));
 else
     % Double- or triple-exponential situation
-    for i = 0 : 2 : numel(display.names) - 3
-        display.names{i + 2} = ['A' char(8321 + i / 2) ':'];
-        display.order(i + 2) = 1 + i;
-        display.graphNames{i + 2} = ['Amplitude A', char(8321 + i / 2)];
-        display.names{i + 3} = [char([964, 8321 + i / 2]) ':'];
-        display.order(i + 3) = 2 + i;
-        display.graphNames{i + 3} = ...
+    for j = 0 : 2 : numel(display.names) - 3
+        display.names{j + 2} = ['A' char(8321 + j / 2) ':'];
+        display.order(j + 2) = 1 + j;
+        display.graphNames{j + 2} = ['Amplitude A', char(8321 + j / 2)];
+        display.names{j + 3} = [char([964, 8321 + j / 2]) ':'];
+        display.order(j + 3) = 2 + j;
+        display.graphNames{j + 3} = ...
             sprintf('Fluorescence Lifetime %s [ps]', ...
-                    char([964, 8321 + i / 2]));
+                    char([964, 8321 + j / 2]));
     end
 end
 % Stretched exponential model
@@ -66,6 +144,9 @@ end
 [~, display.index] = sort(display.order);
 % Create the selected index for the parameter that is being plotted
 display.selIndex = 3;
+
+%% Set the raw image as the default to display
+display.rawInterp = 'lma_param';
 
 %% Work out the time histogram bins and limits
 display.Xbins.exp = fitResult.binWidth * ...
@@ -81,7 +162,7 @@ display.Xlim.fitResid = display.Xbins.fitResid([1, end]);
 
 %% Work out the images to display
 display.img.intensity = flipud(sum(fitResult.transient, 3));
-display.img.fit = flipud(squeeze(fitResult.lma_param(:, :, 3)));
+display.img.fit = flipud(squeeze(fitResult.(display.rawInterp)(:, :, 3)));
 display.img.resid = ...
     double(fitResult.transient(:, :, fitResult.fitFLIM.fit_start : end));
 display.img.resid = display.img.resid - ...
@@ -96,15 +177,18 @@ display.img.ypixLim = [0, size(fitResult.offset, 1) - 1];
 
 %% Work out the limits on the scales for each fit parameter
 display.goodfit.mask = repmat(fitResult.fitFLIM.goodfit, ...
-                              1, 1, size(fitResult.lma_param, 3));
+                              1, 1, size(fitResult.(display.rawInterp),3));
 % Only keep the parameters from good pixels
-display.goodfit.lma_param = fitResult.lma_param(display.goodfit.mask);
+display.goodfit.(display.rawInterp) = ...
+    fitResult.(display.rawInterp)(display.goodfit.mask);
 % Reshape the parameters to have a parameter per column
-display.goodfit.lma_param = reshape(display.goodfit.lma_param, ...
-    numel(display.goodfit.lma_param) / size(fitResult.lma_param, 3), ...
-    size(fitResult.lma_param, 3));
-display.goodfit.median = median(display.goodfit.lma_param);
-display.goodfit.std = std(display.goodfit.lma_param);
+display.goodfit.(display.rawInterp) = ...
+    reshape(display.goodfit.(display.rawInterp), ...
+            numel(display.goodfit.(display.rawInterp)) / ...
+                size(fitResult.(display.rawInterp), 3), ...
+            size(fitResult.(display.rawInterp), 3));
+display.goodfit.median = median(display.goodfit.(display.rawInterp));
+display.goodfit.std = std(display.goodfit.(display.rawInterp));
 display.goodfit.minLim = display.goodfit.median - 3 * display.goodfit.std;
 display.goodfit.maxLim = display.goodfit.median + 3 * display.goodfit.std;
 
@@ -115,18 +199,19 @@ sSize = get(0, 'ScreenSize');
 % Prepare figure size
 fSize = [(sSize(3) - sSize(4)) / 2, sSize(4) * 0.1, sSize(4) * [1, 0.8]];
 % Prepare axes size
-aSize = [fSize(3) * 0.075, fSize(3) * 0.05, ...
+aSize = [fSize(3) * 0.07, fSize(3) * 0.06, ...
          min([0.4 * fSize([4, 4]); 0.8 * fSize([3, 3])])];
 % Create a figure
 h.fig = figure('Units', 'pixels', 'Position', fSize, ...
                'Name', 'displayFLIM', 'NumberTitle', false);
-
+% Center the figure
+movegui(h.fig, 'center')
 % Create a pointer for the figure
-set(h.fig, 'PointerShapeCData', createPointer, ...
-           'PointerShapeHotSpot', [16 16]);
+h.fig.PointerShapeCData = createPointer;
+h.fig.PointerShapeHotSpot = [16 16];
 
 % Add some text elements
-pos = [aSize(1) + aSize(3) * 1.025, aSize(2), 60, 20];
+pos = [aSize(1) + aSize(3) * 1.025, aSize(2), 30, 20];
 h.text.lab.Xpix = uicontrol('Style', 'text', ...
                             'String', 'X:', ...
                             'Position', pos + [0, 30, 0, 0]);
@@ -135,13 +220,13 @@ h.text.lab.Ypix = uicontrol('Style', 'text', ...
                             'Position', pos + [0, 0, 0, 0]);
 h.text.val.Xpix = uicontrol('Style', 'edit', ...
                             'String', '', ...
-                            'Position', pos + [pos(3) - 10, 30, 0, 0], ...
+                            'Position', pos + [pos(3), 30, 100, 0], ...
                             'BackgroundColor', [1 1 1], ...
                             'Callback', @edit_Callback, ...
                             'Tag', 'Xpix');
 h.text.val.Ypix = uicontrol('Style', 'edit', ...
                             'String', '', ...
-                            'Position', pos + [pos(3) - 10, 0, 0, 0], ...
+                            'Position', pos + [pos(3), 0, 100, 0], ...
                             'BackgroundColor', [1 1 1], ...
                             'Callback', @edit_Callback, ...
                             'Tag', 'Ypix');
@@ -150,15 +235,15 @@ h.text.val.Ypix = uicontrol('Style', 'edit', ...
 %% Create starting position for lifetime fits
 pos = pos + [0, 60, 0, 0];
 
-for i = 1 : numel(display.names)
+for j = 1 : numel(display.names)
     % i is the counting index
-    tpos = pos + [0, 30 * (numel(display.names) - display.order(i)), 0, 0];
-    h.text.lab.fit(i) = uicontrol('Style', 'text', ...
-                                  'String', display.names(i), ...
+    tpos = pos + [0, 30 * (numel(display.names) - display.order(j)), 0, 0];
+    h.text.lab.fit(j) = uicontrol('Style', 'text', ...
+                                  'String', display.names(j), ...
                                   'Position', tpos);
-    tpos = tpos + [tpos(3) - 10, 0, 0, 0];
-    h.text.val.fit(i) = uicontrol('Style', 'text', ...
-                                  'String', num2str(i), ...
+    tpos = tpos + [tpos(3), 0, 100, 0];
+    h.text.val.fit(j) = uicontrol('Style', 'text', ...
+                                  'String', num2str(j), ...
                                   'Position', tpos, ...
                                   'BackgroundColor', [1 1 1]);
 end
@@ -170,7 +255,7 @@ colormap(h.axes(1), 'gray')
 
 % Axes for lifetime fit
 aSize = repmat(aSize, 6, 1);
-aSize(2, 1) = aSize(1, 1) + 0.55 * fSize(3);
+aSize(2, 1) = aSize(1, 1) + 0.57 * fSize(3);
 aSize(2, 4) = aSize(1, 4) * 0.6;
 h.axes(2) = axes('Units', 'pixels', ...
                  'Position', aSize(2, :), ...
@@ -208,8 +293,8 @@ h.axes(1).Box = 'on';
 h.axes(1).XAxisLocation = 'top';
 
 % Draw two four dummy lines later used as a cross hair
-for i = 1 : 4
-    h.line.ax1(i) = plot([0 0], [0 0], 'g-');
+for j = 1 : 4
+    h.line.ax1(j) = plot([0 0], [0 0], 'g-');
 end
 
 % Draw the decay transient
@@ -268,7 +353,8 @@ yticks([])
 
 % Draw the lifetime map
 axes(h.axes(4))
-h.image(2) = imagesc(flipud(fitResult.lma_param(:, :, display.selIndex)));
+h.image(2) = ...
+    imagesc(fitResult.(display.rawInterp)(:, :, display.selIndex));
 hold on
 cmap = parula(256);
 cmap(end, :) = [1 0 0]; % Make highest value red
@@ -298,8 +384,8 @@ h.axes(4).YLim = display.img.ylim;
 
 
 % Draw two four dummy lines later used as a cross hair
-for i = 1 : 4
-    h.line.ax4(i) = plot([0 0], [0 0], 'g-');
+for j = 1 : 4
+    h.line.ax4(j) = plot([0 0], [0 0], 'g-');
 end
 
 %% Add a popupmenu (combo box) to choose linear or logarithmic plot
@@ -317,6 +403,18 @@ h.pop(2) = uicontrol('Style', 'popupmenu', ...
                      'Position', pos, ...
                      'Value', display.order(display.selIndex), ...
                      'Callback', @pop_Callback);
+%% Add a popupmenu (combo box) for choosing the fit parameter
+pos = pos + [-170, 0, 80, 0];
+h.pop(3) = uicontrol('Style', 'popupmenu', ...
+                     'String', {'Raw', 'Interpolated'}, ...
+                     'Position', pos, ...
+                     'Value', 1, ...
+                     'Callback', @pop_Callback);
+% If the lmaInterp field does not exist in the fitResult struct, make the
+% above popummenu disabled
+if ~isfield(fitResult, 'lmaInterp')
+    h.pop(3).Enable = 'off';
+end
 
 
 %% Add lifetime limits
@@ -336,7 +434,7 @@ display.CLim = [display.goodfit.minLim(3), display.goodfit.maxLim(3)];
 % Set the histogram limits. They are 15 % more on each side
 display.HLim = display.CLim + [-0.15, 0.15] * diff(display.CLim);
 % Choose the data for the histogram
-display.Hdata = fitResult.lma_param(:, :, display.selIndex);
+display.Hdata = fitResult.(display.rawInterp)(:, :, display.selIndex);
 
 % Only select the data from within the histogram
 display.Hdata = display.Hdata(display.Hdata >= display.HLim(1) & ...
@@ -368,7 +466,10 @@ h.spin(2).String = num2str(round3(display.CLim(2)));
 % Update the lifetime graph
 edit_Callback(h.spin(1))
 
-% Make the figure responsive to the mouse
+% Set all the font sizes to be same for all figures
+set(h.axes, 'FontSize', 10);
+
+%% Make the figure responsive to the mouse and keyboard
 % Call 'mousemove' function when mouse moves over the window
 h.fig.WindowButtonMotionFcn = @mousemove;
 
@@ -402,17 +503,24 @@ display.movedLine = 0;
                     case 'Log'
                         h.axes(2).YScale = 'log';
                 end
-            case h.pop(2)   % Type of data to be displayed
+            case {h.pop(2), h.pop(3)}   % Type of data to be displayed
+                % Check whether raw or interpolated data should be shown
+                if h.pop(3).Value == 2
+                    display.rawInterp = 'lmaInterp';
+                else
+                    display.rawInterp = 'lma_param';
+                end
                 % Find the index of the data to be displayed
-                display.selIndex = display.index(handle.Value);
+                display.selIndex = display.index(h.pop(2).Value);
 
                 % Update the image in the graph
-                h.image(2).CData = ...
-                    flipud(fitResult.lma_param(:, :, display.selIndex));
+                h.image(2).CData = flipud(fitResult.(display.rawInterp) ...
+                    (:, :, display.selIndex));
 
                 % Update the limits on the range
-                display.CLim = [display.goodfit.minLim(display.selIndex), ...
-                                display.goodfit.maxLim(display.selIndex)];
+                display.CLim = ...
+                    [display.goodfit.minLim(display.selIndex), ...
+                     display.goodfit.maxLim(display.selIndex)];
 
                 % Add the spinner values
                 h.spin(1).String = num2str(round3(display.CLim(1)));
@@ -424,6 +532,8 @@ display.movedLine = 0;
                 % Update the colormap axis name
                 set(h.axes(5).Label, ...
                     'String', display.graphNames{display.selIndex});
+            case h.pop(3)   % Raw or interpolated data
+                
         end
     end
 
@@ -511,9 +621,10 @@ display.movedLine = 0;
             % Get the distance and the index of the closest vertical bar
             [M, I] = ...
                 min(abs(display.hist.coord(1) - display.CLim));
-            if display.movedLine == 0
-                display.movedLine = I;
-            end
+            %if display.movedLine == 0
+            % Remember which line is being moved
+            display.movedLine = I;
+            %end
             % Check if the minimum is not more than 0.5% of the histogram
             % limits distance
             if M < diff(display.CLim) * 0.01
@@ -649,7 +760,7 @@ display.movedLine = 0;
                     display.CLim + [-0.15, 0.15] * diff(display.CLim);
                 % Choose the data for the histogram
                 display.Hdata = ...
-                    fitResult.lma_param(:, :, display.selIndex);
+                    fitResult.(display.rawInterp)(:, :, display.selIndex);
 
                 % Only select the data from within the histogram
                 display.Hdata = ...
@@ -714,10 +825,31 @@ display.movedLine = 0;
         % Calculate the image row and column index from mouse position
         rowIn = display.img.ypixLim(2) + 2 - C(3);
         colIn = C(1);
-        % Display the fit values
-        for i = 1 : numel(h.text.val.fit)
-            h.text.val.fit(i).String = ...
-                num2str(round3(fitResult.lma_param(rowIn, colIn, i)));
+        % Display the fit values. This can be either interpolated or raw.
+        % When interpolated, show both
+        % The raw value is always good, when goodfit is true or when raw
+        % data is selected
+        if fitResult.fitFLIM.goodfit(rowIn, colIn) || ...
+                isequal(display.rawInterp, 'lma_param')
+            for i = 1 : numel(h.text.val.fit)
+                % Just show the raw fitted value
+                h.text.val.fit(i).String = ...
+                    num2str(round3(fitResult.lma_param ...
+                                   (rowIn, colIn, i)));
+            end
+        else
+            % Show both the interpolated and the non-interpolated value
+            for i = 1 : numel(h.text.val.fit)
+                % Show the interpolated fitted value followed by the
+                % raw value in parentheses
+                h.text.val.fit(i).String = ...
+                    sprintf('%g (%g)', ...
+                            round3(fitResult.lmaInterp ...
+                                           (rowIn, colIn, i)), ...
+                            round3(fitResult.lma_param ...
+                                           (rowIn, colIn, i)));
+                
+            end
         end
 
         % Draw the decay and fit

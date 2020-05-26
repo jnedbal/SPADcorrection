@@ -37,7 +37,8 @@ function [fitResult, setting] = processFLIM(setting)
 %                       routing will be saved into a MAT file. The file 
 %                       name(s) will be same as the FLIMfile input, except 
 %                       for the extension, which will be '.FIT.MAT'.
-%                       Default TRUE. 
+%                       Default TRUE.
+%   setting.interpLM    Interpolate LM data for noisy pixels.
 %   setting.fitType     Choose the fitting model for the 
 %                       Levenberg-Marquardt routine. The options are 
 %                       'exp1', 'exp2', 'exp3', and 'expStretch', for
@@ -98,6 +99,7 @@ function [fitResult, setting] = processFLIM(setting)
 %   fitResult.transient The corrected FLIM data from the SPAD camera.
 %   fitResult.lma_param Result of the fitting parameters as produced by 
 %                       SlimCurve.
+%   fitResult.lmaInterp Interpolated data in noisy pixels
 %   fitResult.lma_fit   Fitted decays produced by SlimCurve.
 %   fitResult.offset    Additive constant to the fitted decay.
 %   fitResult.chi2      Chi^2 (Chi-squared) error of the fit.
@@ -137,7 +139,8 @@ function [fitResult, setting] = processFLIM(setting)
 % Jakub Nedbal
 % King's College London
 % Aug 2020
-% Last Revision: 19-May-2020 - Created this file. No interactive output yet
+% Last Revision: 26-May-2020 - Created support for interpolated fits.
+% Revision: 19-May-2020 - Created this file. No interactive output yet
 %
 % Copyright 2020 Jakub Nedbal
 %
@@ -178,6 +181,10 @@ if nargin == 0 || ~isfield(setting, 'saveICS')
     % Set an empty struct
     setting.saveICS = true;
 end
+% Check OK exists. This is a field to check that OK button has been pressed
+if ~isfield(setting, 'OK')
+    setting.OK = false;
+end
 % Check saveIRF exists, instruction to save an IRF file with the transient
 % This is used to save files for use in TRI2
 if ~isfield(setting, 'saveIRF')
@@ -192,6 +199,11 @@ end
 % Levenberg-Marquardt fitting of the transient into a MATLAB.mat file
 if ~isfield(setting, 'saveLM')
     setting.saveLM = true;
+end
+% Check interpLM exists, instruction interpolated pixels which have high
+% noise
+if ~isfield(setting, 'interpLM')
+    setting.interpLM = true;
 end
 % Check fitType exists, type of fit used by the L-M fitting engine. Can be
 % 'exp1', 'exp2', 'exp3', 'expStretch'
@@ -319,7 +331,7 @@ end
 
 if setting.interactive
     %% Create a figure of a setting dialog questionnaire
-    h.f = figure('Units', 'Pixels', 'Position', [200, 200, 340, 470], ...
+    h.f = figure('Units', 'Pixels', 'Position', [200, 200, 340, 500], ...
                  'Toolbar', 'None', 'Menu', 'None', ...
                  'Name', 'Process FLIM', 'NumberTitle', 'off');
     % Center the figure
@@ -328,18 +340,18 @@ if setting.interactive
     % Save ICS file checkbox
     h.c(1) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveICS, ...
-                       'Position', [10, 430, 320, 22], ...
+                       'Position', [10, 460, 320, 22], ...
                        'String', 'Save into ICS file', ...
                        'Callback', @check_call);
     % Save IRF checkbox
     h.c(2) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveIRF, ...
-                       'Position', [30, 400, 300, 22], ...
+                       'Position', [30, 430, 300, 22], ...
                        'String', 'Save accompanying IRF', ...
                        'Callback', @check_call);
     % Save IRF checkbox comment
     h.t(1) = uicontrol('Style', 'Text', 'Units', 'Pixels', ...
-                       'Position', [47, 370, 320, 22], ...
+                       'Position', [47, 400, 320, 22], ...
                        'String', '(Requires average IRF)', ...
                        'HorizontalAlignment', 'left', 'Enable', 'off');
     % Only with average prompts the IRF can be saved. Enable/Disable the
@@ -354,14 +366,20 @@ if setting.interactive
     % Run L-M fitting checkbox
     h.c(3) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.runLM, ...
-                       'Position', [10, 340, 320, 22], ...
+                       'Position', [10, 370, 320, 22], ...
                        'String', 'Perform L-M fitting', ...
                        'Callback', @check_call);
     % Save L-M fitting checkbox
     h.c(4) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveLM, ...
-                       'Position', [30, 310, 320, 22], ...
+                       'Position', [30, 340, 320, 22], ...
                        'String', 'Save Fit', ...
+                       'Callback', @check_call);
+    % Interp L-M fitting checkbox
+    h.c(5) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
+                       'Value', setting.interpLM, ...
+                       'Position', [30, 310, 320, 22], ...
+                       'String', 'Interpolate Fit', ...
                        'Callback', @check_call);
     % Radio buttons for the fit type
     % Single-exponential fit radio button
@@ -426,6 +444,15 @@ if setting.interactive
                        'Callback', @irf_call, ...
                        'Value', strcmp(setting.promptTypes{4}, ...
                                        setting.promptType));
+    % Only with runLM makes it sense to enable the underlying check boxes
+    % and radio buttons
+	if setting.runLM %#ok<ALIGN>
+        h.c(4).Enable = 'on';
+        h.c(5).Enable = 'on';
+    else
+        h.c(4).Enable = 'off';
+        h.c(5).Enable = 'off';
+    end
     % Create OK pushbutton   
     h.p = uicontrol('Style', 'Pushbutton', 'Units', 'Pixels', ...
                     'Position', [140, 10, 60, 20], 'String', 'OK', ...
@@ -442,6 +469,8 @@ end
         setting.runLM = get(h.c(3), 'Value');
         % Store the fit type setting if selected and enabled
         setting.saveLM = h.c(4).Value && isequal(h.c(4).Enable, 'on');
+        % Store the fit type setting if selected and enabled
+        setting.interpLM = h.c(5).Value && isequal(h.c(5).Enable, 'on');
         % Store the fit type setting
         setting.fitType = setting.fitTypes{[h.o.Value] == 1};
         % Store the prompt type setting
@@ -479,12 +508,12 @@ end
                 % Run L-M analysis
                 % Enable radio buttons for fitting
                 if h.c(3).Value
-                    set([h.o, h.i, h.c(4)], 'Enable', 'on')
+                    set([h.o, h.i, h.c([4 5])], 'Enable', 'on')
                 else
                     if h.c(1).Value
-                        set([h.o, h.i([2 4]), h.c(4)], 'Enable', 'off')
+                        set([h.o, h.i([2 4]), h.c([4 5])], 'Enable', 'off')
                     else
-                        set([h.o, h.i, h.c(4)], 'Enable', 'off')
+                        set([h.o, h.i, h.c([4 5])], 'Enable', 'off')
                     end
                 end
             case 4
@@ -637,6 +666,32 @@ for i = 1 : numel(setting.FLIMfile)
         fitResult.fitFLIM.fit_end = correction.fitFLIM.fit_end;
     end
 
+    %% Interpolate the 2D images, if required
+    if setting.interpLM
+        fitResult.lmaInterp = fitResult.lma_param;
+        [X, Y] = meshgrid(1 : size(fitResult.lma_param, 2), ...
+                          1 : size(fitResult.lma_param, 1));
+        % bad fit matrix
+        badfit = ~correction.IRF.fit.goodfit;
+        Xv = X(badfit);
+        Yv = X(badfit);
+        X = X(correction.IRF.fit.goodfit);
+        Y = Y(correction.IRF.fit.goodfit);
+
+        for j = 1 : size(fitResult.lma_param, 3)
+            % Create the vector of well fitted data
+            Vv = fitResult.lma_param(:, :, j);
+            V = Vv(correction.IRF.fit.goodfit);
+            % Create a new interpolat object
+            F = scatteredInterpolant(X, Y, V,  'linear', 'nearest');
+            % Fill in the poor pixel values with interpolated data
+            Vv(badfit) = F(Xv, Yv);
+            % Store the result in the struct
+            fitResult.lmaInterp(:, :, j) = Vv;
+        end
+        
+    end
+    
     %% Save the IRF if this was requested
     if setting.saveIRF
         % Prepare the prompt. It will be a single prompt for all pixel made
