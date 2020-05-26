@@ -283,6 +283,7 @@ h.axes(6).Position = aSize(6, :);
 % Add x-axis label
 xlabel(display.graphNames{display.selIndex});
 
+
 %% Draw the maximum projection (intensity)
 axes(h.axes(1))
 h.image(1) = imagesc(display.img.intensity);
@@ -372,6 +373,20 @@ aSize(5, 4) = aSize(4, 4) * 0.7;
 h.axes(5).Position = aSize(5, :);
 % Label the colorbar
 set(h.axes(5).Label, 'String', display.graphNames{display.selIndex})
+
+% Invisible axes for lines over colorbar
+h.axes(7) = axes('Units', 'pixels');
+h.axes(7).Position = h.axes(5).Position;
+% Plot the lower bound line
+h.line.ax7(1) = plot([0, 1], [0 0], 'Color', [0, 0, 0], 'LineWidth', 2);
+hold on
+% Plot the upper bound line
+h.line.ax7(2) = plot([0, 1], [2 2], 'Color', [1, 0, 0], 'LineWidth', 2);
+% Plot the sliding value line
+h.line.ax7(3) = plot([0, 1], [1 1], 'Color', [1, 1, 1], 'LineWidth', 2);
+h.axes(7).XLim = [0, 1];
+h.axes(7).YLim = h.axes(5).YLim;
+h.axes(7).Visible = 'off';
 
 % Change the colormap to grayscale
 % Flip the Y axis, add the box
@@ -532,8 +547,9 @@ display.movedLine = 0;
                 % Update the colormap axis name
                 set(h.axes(5).Label, ...
                     'String', display.graphNames{display.selIndex});
-            case h.pop(3)   % Raw or interpolated data
-                
+
+                % Update the graph
+                updateGraphs;
         end
     end
 
@@ -788,7 +804,11 @@ display.movedLine = 0;
                 %h.axes(6).XLim = value;
                 set(h.axes(6).XLabel, ...
                     'String', display.graphNames{display.selIndex});
-                
+
+                % Update the lines over the Colorbar
+                h.line.ax7(1).YData = display.CLim(1) * [1, 1];
+                h.line.ax7(2).YData = display.CLim(2) * [1, 1];
+                h.axes(7).YLim = display.CLim;
         end
     end
 
@@ -872,6 +892,9 @@ display.movedLine = 0;
         if ndims(fitResult.fitFLIM.prompt) == 3
             h.line.ax3(4).YData = fitResult.fitFLIM.prompt(rowIn, colIn,:);
         end
+
+        % Draw the colorbar line
+        h.line.ax7(3).YData = fitResult.(display.rawInterp)(rowIn, colIn, display.selIndex) * [1, 1];
     end
 end
 
