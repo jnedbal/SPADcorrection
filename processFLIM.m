@@ -39,6 +39,8 @@ function [fitResult, setting] = processFLIM(setting)
 %                       for the extension, which will be '.FIT.MAT'.
 %                       Default TRUE.
 %   setting.interpLM    Interpolate LM data for noisy pixels.
+%   setting.displayFit  Open an interactive window displaying the results
+%                       of the fluorescence decay fits.
 %   setting.fitType     Choose the fitting model for the 
 %                       Levenberg-Marquardt routine. The options are 
 %                       'exp1', 'exp2', 'exp3', and 'expStretch', for
@@ -215,6 +217,12 @@ end
 if ~isfield(setting, 'promptType')
     setting.promptType = 'avgExpPrompt';
 end
+
+% Check displayFit exists. It is an instruction to display the
+% interactive figure
+if ~isfield(setting, 'displayFit')
+    setting.displayFit = false;
+end
 % Check correctionFile exists, the full path to the file containing the
 % correction struct with all the necessary calibration data.
 if ~isfield(setting, 'correctionFile')
@@ -290,7 +298,7 @@ end
 if isempty(correction)
     uiwait(warndlg(['There is no correction struct. ', ...
                     'Choose a file to load it.'], ...
-                    'fitFLIM: Warning'));
+                    'Process FLIM: Warning'));
     % load the calibration file
     [file, path] = ...
         uigetfile({'*.mat', 'MATLAB Files (*.mat)'; ...
@@ -331,7 +339,7 @@ end
 
 if setting.interactive
     %% Create a figure of a setting dialog questionnaire
-    h.f = figure('Units', 'Pixels', 'Position', [200, 200, 340, 500], ...
+    h.f = figure('Units', 'Pixels', 'Position', [200, 200, 340, 530], ...
                  'Toolbar', 'None', 'Menu', 'None', ...
                  'Name', 'Process FLIM', 'NumberTitle', 'off');
     % Center the figure
@@ -340,18 +348,18 @@ if setting.interactive
     % Save ICS file checkbox
     h.c(1) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveICS, ...
-                       'Position', [10, 460, 320, 22], ...
+                       'Position', [10, 490, 320, 22], ...
                        'String', 'Save into ICS file', ...
                        'Callback', @check_call);
     % Save IRF checkbox
     h.c(2) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveIRF, ...
-                       'Position', [30, 430, 300, 22], ...
+                       'Position', [30, 460, 300, 22], ...
                        'String', 'Save accompanying IRF', ...
                        'Callback', @check_call);
     % Save IRF checkbox comment
     h.t(1) = uicontrol('Style', 'Text', 'Units', 'Pixels', ...
-                       'Position', [47, 400, 320, 22], ...
+                       'Position', [47, 430, 320, 22], ...
                        'String', '(Requires average IRF)', ...
                        'HorizontalAlignment', 'left', 'Enable', 'off');
     % Only with average prompts the IRF can be saved. Enable/Disable the
@@ -366,20 +374,26 @@ if setting.interactive
     % Run L-M fitting checkbox
     h.c(3) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.runLM, ...
-                       'Position', [10, 370, 320, 22], ...
+                       'Position', [10, 400, 320, 22], ...
                        'String', 'Perform L-M fitting', ...
                        'Callback', @check_call);
     % Save L-M fitting checkbox
     h.c(4) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.saveLM, ...
-                       'Position', [30, 340, 320, 22], ...
-                       'String', 'Save Fit', ...
+                       'Position', [30, 370, 320, 22], ...
+                       'String', 'Save fit', ...
                        'Callback', @check_call);
     % Interp L-M fitting checkbox
     h.c(5) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
                        'Value', setting.interpLM, ...
+                       'Position', [30, 340, 320, 22], ...
+                       'String', 'Interpolate fit', ...
+                       'Callback', @check_call);
+    % Display result
+    h.c(6) = uicontrol('Style', 'Checkbox', 'Units', 'Pixels', ...
+                       'Value', setting.displayFit, ...
                        'Position', [30, 310, 320, 22], ...
-                       'String', 'Interpolate Fit', ...
+                       'String', 'Display results', ...
                        'Callback', @check_call);
     % Radio buttons for the fit type
     % Single-exponential fit radio button
@@ -449,9 +463,11 @@ if setting.interactive
 	if setting.runLM %#ok<ALIGN>
         h.c(4).Enable = 'on';
         h.c(5).Enable = 'on';
+        h.c(6).Enable = 'on';
     else
         h.c(4).Enable = 'off';
         h.c(5).Enable = 'off';
+        h.c(6).Enable = 'off';
     end
     % Create OK pushbutton   
     h.p = uicontrol('Style', 'Pushbutton', 'Units', 'Pixels', ...
@@ -469,8 +485,11 @@ end
         setting.runLM = get(h.c(3), 'Value');
         % Store the fit type setting if selected and enabled
         setting.saveLM = h.c(4).Value && isequal(h.c(4).Enable, 'on');
-        % Store the fit type setting if selected and enabled
+        % Store the interpolate LM data fit if selected and enabled
         setting.interpLM = h.c(5).Value && isequal(h.c(5).Enable, 'on');
+        % Store the display result setting if selected and enabled
+        setting.displayFit = ...
+            h.c(6).Value && isequal(h.c(6).Enable, 'on');
         % Store the fit type setting
         setting.fitType = setting.fitTypes{[h.o.Value] == 1};
         % Store the prompt type setting
@@ -558,52 +577,168 @@ if setting.interactive
     end
 end
 
+
+
+
+% Some fields in the fitResult struct are same for all the input files.
+% These will be populated first. The others are specific to the input file
+% and these will be populated later
+
+% binWidth is the average bin width across the range, expressed in
+% nanoseconds
+fitResult = struct('fitFLIM', ...
+               struct('binWidth', mean(correction.avgBinWidth(:)) * 1e-3));
+% Get the image size
+imSize = size(correction.binWidth);
+
+%% Create general parameters for running the Levenberg-Marquardt fit
+if setting.runLM
+    % Prepare the prompt. It might be a single prompt for all pixels or
+    % a prompt specific to each pixel.
+    prompt = correction.fitFLIM.(setting.promptType);
+    % The prompt treated depending on the number of dimensions
+    if ndims(prompt) == 3
+        prompt = reshape(prompt, ...
+                         imSize(1) * imSize(2), ...
+                         size(prompt, 3))';
+    else
+        prompt = prompt(:);
+    end
+    % The bin width, i.e. the linearized TDC time increment 
+    x_inc = correction.avgBinWidth(:);
+    % The fit start index
+    fit_start = correction.fitFLIM.fit_start - ...
+                correction.fitFLIM.start;
+    % Convert the fit type into a numerical value
+    fit_type = find(contains(setting.fitTypes, setting.fitType));
+
+    % Save the markers on the transients
+    fitResult.fitFLIM.start = correction.fitFLIM.start;
+    fitResult.fitFLIM.fit_start = correction.fitFLIM.fit_start;
+    fitResult.fitFLIM.fit_end = correction.fitFLIM.fit_end;
+
+    % Create an order of the results in the output results matrix
+    switch setting.fitType
+        case 'exp1'
+            % Single exponential fitting
+            % Short names of the fit parameters
+            fitResult.fitFLIM.shortName = {'Z', ...             % Offset
+                                           'A', ...             % Amplitude
+                                           char(964), ...       % Lifetime
+                                           char([967, 178])};   % chi^2
+            % Full descriptions of the fit parameters
+            fitResult.fitFLIM.longName = {'Offset', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Chi-Squared'};
+            % Units of the parameters
+            fitResult.fitFLIM.units = {'', '', 'ps', ''};
+        case 'exp2'
+            % Double exponential fitting
+            % Short names of the fit parameters
+            fitResult.fitFLIM.shortName = ...
+                {'Z', ...               % Offset
+                 ['A', char(8321)], ... % Amplitude 1
+                 char([964, 8321]), ... % Lifetime 1
+                 ['A', char(8322)], ... % Amplitude 2
+                 char([964, 8322]), ... % Lifetime 2
+                 char([967, 178])};     % chi^2
+            % Full descriptions of the fit parameters
+            fitResult.fitFLIM.longName = {'Offset', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Chi-Squared'};
+            % Units of the parameters
+            fitResult.fitFLIM.units = {'', '', 'ps', '', 'ps', ''};
+        case 'exp3'
+            % Double exponential fitting
+            % Short names of the fit parameters
+            fitResult.fitFLIM.shortName = ...
+                {'Z', ...               % Offset
+                 ['A', char(8321)], ... % Amplitude 1
+                 char([964, 8321]), ... % Lifetime 1
+                 ['A', char(8322)], ... % Amplitude 2
+                 char([964, 8322]), ... % Lifetime 2
+                 ['A', char(8323)], ... % Amplitude 3
+                 char([964, 8323]), ... % Lifetime 3
+                 char([967, 178])};     % chi^2
+            % Full descriptions of the fit parameters
+            fitResult.fitFLIM.longName = {'Offset', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Chi-Squared'};
+            % Units of the parameters
+            fitResult.fitFLIM.units = ...
+                {'', '', 'ps', '', 'ps', '', 'ps', ''};
+        case 'expStrech'
+            % Single exponential fitting
+            % Short names of the fit parameters
+            fitResult.fitFLIM.shortName = ...
+                {'Z', ...           % Offset
+                 'A', ...           % Amplitude
+                 char(964), ...     % Lifetime
+                 'H', ...           % Strech Exponent
+                 char([967, 178])}; % chi^2
+            % Full descriptions of the fit parameters
+            fitResult.fitFLIM.longName = {'Offset', ...
+                                          'Amplitude', ...
+                                          'Fluorescence Lifetime', ...
+                                          'Stretch Exponent', ...
+                                          'Chi-Squared'};
+            % Units of the parameters
+            fitResult.fitFLIM.units = {'', '', 'ps', '', ''};
+    end
+end
+% End of "Create general parameters for running the Levenberg-Marquardt
+%         fit"
+
+
+%% Create general parameters for interpolating the results in pixels with
+%  high DCR
+if setting.interpLM
+    [X, Y] = meshgrid(1 : size(correction.IRF.fit.goodfit, 2), ...
+                      1 : size(correction.IRF.fit.goodfit, 1));
+    % bad fit matrix
+    badfit = ~correction.IRF.fit.goodfit;
+    Xv = X(badfit);
+    Yv = X(badfit);
+    X = X(correction.IRF.fit.goodfit);
+    Y = Y(correction.IRF.fit.goodfit);
+end
+% End of "Create general parameters for interpolating the results in pixels
+%         with high DCR"
+
+
+
 %% Start the analysis of the SPAD data file-by-file
 
-fitResult = struct([]);
 for i = 1 : numel(setting.FLIMfile)
     % Store the file name
-    fitResult(i).fname = setting.FLIMfile{i};
+    fitResult.in(i).fname = setting.FLIMfile{i};
     % Load the data
     load(setting.FLIMfile{i})
     % Run the linearization and skew correction routine
     corrHist = resampleHistogramPar(XYZimage);
-    % binWidth is the average bin width across the range, expressed in
-    % nanoseconds
-    fitResult(i).binWidth = mean(correction.avgBinWidth(:)) * 1e-3;
-    % Get the image size
-    imSize = size(XYZimage);
+
     % Check if L-M fitting is required
     if setting.runLM
         % Reshape the data for decay analysis
-        transient = reshape(corrHist, imSize(1) * imSize(2), imSize(3))';
+        transient = ...
+            reshape(corrHist, imSize(1) * imSize(2), imSize(3))';
         % Select only the part of the curves that should be fitted
-        transient = double(transient(correction.fitFLIM.start : ...
-                                     correction.fitFLIM.fit_end, :));
-    	% Store the transient for later
-        fitResult(i).transient = transient;
-        % Prepare the prompt. It might be a single prompt for all pixels or
-        % a prompt specific to each pixel.
-        prompt = correction.fitFLIM.(setting.promptType);
-        % The prompt treated depending on the number of dimensions
-        if ndims(prompt) == 3
-            prompt = reshape(prompt, ...
-                             imSize(1) * imSize(2), ...
-                             size(prompt, 3))';
-        else
-            prompt = prompt(:);
-        end
-        % The bin width, i.e. the linearized TDC time increment 
-        x_inc = correction.avgBinWidth(:);
-        % The fit start index
-        fit_start = correction.fitFLIM.fit_start - ...
-                    correction.fitFLIM.start;
-        % Convert the fit type into a numerical value
-        fit_type = find(contains(setting.fitTypes, setting.fitType));
+        transient = double(transient ...
+               (correction.fitFLIM.start : correction.fitFLIM.fit_end, :));
+
         % Make a comment
         fprintf('Running the LMA fit on %s...\n', setting.FLIMfile{i})
         % Run the fit
-        [fitResult(i).lma_param, ~, fitResult(i).lma_fit] = ...
+        [fitResult.out(i).lma_param, ~, fitResult.out(i).lma_fit] = ...
             mxSlimCurve(transient, ...
                         prompt, ...
                         x_inc, ...
@@ -611,225 +746,203 @@ for i = 1 : numel(setting.FLIMfile)
                         fit_type);
         % Reorganize the LMA fittted curves a rectangular 3D matrix
         % representing the SPAD camera pixels
-        fitResult(i).lma_fit = ...
-            reshape(fitResult(i).lma_fit', ...
+        fitResult.out(i).lma_fit = ...
+            reshape(fitResult.out(i).lma_fit', ...
                     imSize(1), ...
                     imSize(2), ...
-                    size(fitResult(i).lma_fit, 1));
+                    size(fitResult.out(i).lma_fit, 1));
         % Reorganize the LMA fit results into a rectangular 3D matrix
         % representing the SPAD camera pixels
-        fitResult(i).lma_param = ...
-            reshape(fitResult(i).lma_param', ...
+        fitResult.out(i).lma_param = ...
+            reshape(fitResult.out(i).lma_param', ...
                     imSize(1), ...
                     imSize(2), ...
-                    size(fitResult(i).lma_param, 1));
-        % Distribute the results into a more legible format
-        % Two of the results are same regardless of the fit type
-        % offset
-        fitResult(i).offset = squeeze(fitResult(i).lma_param(:, :, 1));
-        % chi^2
-        fitResult(i).chi2 = squeeze(fitResult(i).lma_param(:, :, end));
-        % The other results differ according to the fit type
-        switch setting.fitType
-            case 'exp1'
-                % Single exponential fitting
-                % amplitude
-                fitResult(i).A = squeeze(fitResult(i).lma_param(:, :, 2));
-                % lifetime [ps]
-                fitResult(i).tau = squeeze(fitResult(i).lma_param(:,:, 3));
-            case 'exp2'
-                % Double exponential fitting
-                % amplitude 1 and 2
-                fitResult(i).A = fitResult(i).lma_param(:, :, [2, 4]);
-                % lifetime 1 and 2 [ps]
-                fitResult(i).tau = fitResult(i).lma_param(:, :, [3, 5]);
-            case 'exp3'
-                % Triple exponential fitting
-                % amplitude 1, 2, and 3
-                fitResult(i).A = fitResult(i).lma_param(:, :, [2, 4, 6]);
-                % lifetime 1, 2, and 3 [ps]
-                fitResult(i).tau = fitResult(i).lma_param(:, :, [3, 5, 7]);
-            case 'expStretch'
-                % Stretched exponential fitting
-                % amplitude
-                fitResult(i).A = squeeze(fitResult(i).lma_param(:, :, 2));
-                % lifetime [ps]
-                fitResult(i).tau = squeeze(fitResult(i).lma_param(:, :,3));
-                % stretching exponent
-                fitResult(i).H = squeeze(fitResult(i).lma_param(:, :, 4));
-        end
-        % Save the entire transient
-        fitResult(i).transient = ...
-            corrHist(:, :, 1 : correction.fitFLIM.fit_end);
-        fitResult.fitFLIM.start = correction.fitFLIM.start;
-        fitResult.fitFLIM.fit_start = correction.fitFLIM.fit_start;
-        fitResult.fitFLIM.fit_end = correction.fitFLIM.fit_end;
+                    size(fitResult.out(i).lma_param, 1));
     end
 
     %% Interpolate the 2D images, if required
     if setting.interpLM
-        fitResult.lmaInterp = fitResult.lma_param;
-        [X, Y] = meshgrid(1 : size(fitResult.lma_param, 2), ...
-                          1 : size(fitResult.lma_param, 1));
-        % bad fit matrix
-        badfit = ~correction.IRF.fit.goodfit;
-        Xv = X(badfit);
-        Yv = X(badfit);
-        X = X(correction.IRF.fit.goodfit);
-        Y = Y(correction.IRF.fit.goodfit);
-
-        for j = 1 : size(fitResult.lma_param, 3)
+        fitResult.out(i).lmaInterp = fitResult.out(i).lma_param;
+        % Interpolate the data parameter-by-parameter
+        for j = 1 : size(fitResult.out(i).lma_param, 3)
             % Create the vector of well fitted data
-            Vv = fitResult.lma_param(:, :, j);
+            Vv = fitResult.out(i).lma_param(:, :, j);
             V = Vv(correction.IRF.fit.goodfit);
             % Create a new interpolat object
             F = scatteredInterpolant(X, Y, V,  'linear', 'nearest');
             % Fill in the poor pixel values with interpolated data
             Vv(badfit) = F(Xv, Yv);
             % Store the result in the struct
-            fitResult.lmaInterp(:, :, j) = Vv;
+            fitResult.out(i).lmaInterp(:, :, j) = Vv;
         end
-        
     end
     
-    %% Save the IRF if this was requested
-    if setting.saveIRF
-        % Prepare the prompt. It will be a single prompt for all pixel made
-        % either by experimental prompt averaging or by an exponentially
-        % modified Gaussian model
-        fitResult(i).prompt = ...
-            correction.fitFLIM.([setting.promptType 'Full']) ...
-                (1 : correction.fitFLIM.fit_end);
-        % The prompt needs to be three dimensional
-        fitResult(i).prompt = reshape(fitResult(i).prompt, ...
-                                      [1 1 numel(fitResult(i).prompt)]);
-        % Create the file name to save the data
-        [path, file] = fileparts(setting.FLIMfile{i});
-        fitResult(i).IRFfile = fullfile(path, [file, '.irf.ics']);
-        % Check that the file doesn't exist
-        if exist(fitResult(i).IRFfile, 'file') == 2 && ...
-                ~setting.overwriteFiles
-            % Give a warning that the file already exists
-            uiwait(warndlg({sprintf('File %s already exists. ', ...
-                                    fitResult(i).IRFfile), ...
-                            'Choose a filename to save the IRF.'}, ...
-                           'fitFLIM: Warning'));
-            % Ask for a new file name or confirm the original file
-            [file, path] = ...
-                uiputfile({'*.irf.ics', 'MAT-files (*.irf.ics)'; ...
-                           '*.*',   'All Files (*.*)'}, ...
-                          'Save as', fitResult(i).IRFfile);
-            % If box is closed or Cancel pressed, do not save
-            if ischar(file)
-                % Set the new filename
-                fitResult(i).IRFfile = strcat(path, file);
-                % Save the file
-                saveIRF(fitResult(i).prompt, ...
-                        [1 1], ...
-                        fitResult(i).IRFfile, ...
-                        fitResult(i).binWidth);
-            else
-                % File is 'none', because Cancel was pressed
-                fitResult(i).IRFfile = 'none';
-            end
-        else
-            % If the file doesn't exist yet, save it directly
-            saveIRF(fitResult(i).prompt, ...
-                    [1 1], ...
-                    fitResult(i).IRFfile, ...
-                    fitResult(i).binWidth);
-        end
+    %% Create the transient for display or ICS file
+    if setting.runLM || setting.saveICS
+        % Save the entire transient
+        fitResult.in(i).transient = ...
+            corrHist(:, :, 1 : correction.fitFLIM.fit_end);
     end
 
     %% Save the ICS file for TRI2 analysis if this was requested
     if setting.saveICS
-        % Reshape the data for decay analysis
-        % Select only the part of the curves that should be fitted
-        transient = double(corrHist(:, :, 1 : correction.fitFLIM.fit_end));
         % Range is the time range of the prompt expressed in seconds
-        range = fitResult(i).binWidth * size(transient, 3) * 1e-9;
+        range = fitResult.fitFLIM.binWidth * ...
+                size(fitResult.out(i).transient, 3) * 1e-9;
         % Create the file name to save the data
         [path, file] = fileparts(setting.FLIMfile{i});
-        fitResult(i).ICSfile = fullfile(path, [file, '.ics']);
+        fitResult.out(i).ICSfile = fullfile(path, [file, '.ics']);
         % Check that the file doesn't exist
-        if exist(fitResult(i).ICSfile, 'file') == 2 && ...
+        if exist(fitResult.out(i).ICSfile, 'file') == 2 && ...
                 ~setting.overwriteFiles
             % Give a warning that the file already exists
             uiwait(warndlg({sprintf('File %s already exists. ', ...
-                                    fitResult(i).ICSfile), ...
+                                    fitResult.out(i).ICSfile), ...
                             'Choose filename to save data for TRI2.'}, ...
-                           'fitFLIM: Warning'));
+                           'Process FLIM: Warning'));
             % Ask for a new file name or confirm the original file
             [file, path] = uiputfile({'*.ics', 'MAT-files (*.ics)'; ...
                                       '*.*',   'All Files (*.*)'}, ...
-                                     'Save as', fitResult(i).ICSfile);
+                                     'Save as', fitResult.out(i).ICSfile);
             % If box is closed or Cancel pressed, do not save
             if ischar(file)
                 % Set the new filename
-                fitResult(i).ICSfile = strcat(path, file);
+                fitResult.out(i).ICSfile = strcat(path, file);
                 % Save the file
-                exportICS2(transient, fitResult(i).ICSfile, range);
+                exportICS2(transient, fitResult.out(i).ICSfile, range);
             else
                 % File is 'none', because Cancel was pressed
-                fitResult(i).ICSfile = 'none';
+                fitResult.out(i).ICSfile = 'none';
             end
         else
             % If the file doesn't exist yet, save it directly
-            exportICS2(transient, fitResult(i).ICSfile, range);
-        end
-    end
-
-    %% Check if the results should be saved
-    if setting.saveLM
-        % Store the prompt for display
-        fitResult.fitFLIM.prompt = correction.fitFLIM.(setting.promptType);
-        % Store the prompt range for display
-        fitResult.fitFLIM.timeBin = correction.fitFLIM.timeBin;
-        % Store the good pixel data matrix
-        fitResult.fitFLIM.goodfit = correction.IRF.fit.goodfit;
-        % Create the file name to save the data
-        [path, file] = fileparts(setting.FLIMfile{i});
-        fitResult(i).LMfile = fullfile(path, [file, '.fit.mat']);
-        % Check that the file doesn't exist
-        if exist(fitResult(i).LMfile, 'file') == 2 && ...
-                ~setting.overwriteFiles
-            % Give a warning that the file already exists
-            uiwait(warndlg({sprintf('File %s already exists. ', ...
-                                    fitResult(i).LMfile), ...
-                            'Choose a filename to save the data.'}, ...
-                           'fitFLIM: Warning'));
-            % Ask for a new file name or confirm the original file
-            [file, path] = ...
-                uiputfile({'*.fit.mat', 'MAT-files (*.fit.mat)'; ...
-                           '*.*',   'All Files (*.*)'}, ...
-                          'Save as', fitResult(i).LMfile);
-            % If box is closed or Cancel pressed, do not save
-            if ischar(file)
-                % Set the new filename
-                fitResult(i).LMfile = strcat(path, file);
-                % Create a temporary struct for saving. This is to save
-                % only the result of this iterration processing iterration
-                S.fitResult = fitResult(i);
-                S.setting = setting;
-                % Save the file
-                save(fitResult(i).LMfile, '-struct', 'S');
-                clear S;
-            else
-                % File is 'none', because Cancel was pressed
-                fitResult(i).LMfile = 'none';
-            end
-        else
-            % If the file doesn't exist yet, save it directly
-            % Create a temporary struct for saving. This is to save only
-            % the result of this iterration processing iterration
-            S.fitResult = fitResult(i);
-            S.setting = setting;
-            % Save the file
-            save(fitResult(i).LMfile, '-struct', 'S');
-            clear S;
+            exportICS2(transient, fitResult.out(i).ICSfile, range);
         end
     end
 end
-    
+% End of "Start the analysis of the SPAD data file-by-file"
+
+%% Create a combined filename for IRF file and/or MAT file with the saved 
+%  fit results
+if setting.saveIRF || setting.saveLM
+    % Create a different file name, depending on whether just one file is
+    % being analyzed or more than one
+    if numel(setting.FLIMfile{i}) == 1
+        % Create the file name to save the data
+        [path, file] = fileparts(setting.FLIMfile{1});
+        filename = fullfile(path, file);
+    else
+        [path, file1] = fileparts(setting.FLIMfile{1});
+        [~, file2] = fileparts(setting.FLIMfile{end});
+        % Create a filename that is the combination of the first and last
+        % file in the analyzed batch
+        filename = fullfile(path, [file1, '--', file2]);
+    end
+end
+% End of "Create a combined filename for IRF file and/or MAT file with the
+%         saved fit results"
+
+%% Save the IRF if this was requested
+if setting.saveIRF
+    % Prepare the prompt. It will be a single prompt for all pixel made
+    % either by experimental prompt averaging or by an exponentially
+    % modified Gaussian model
+    fitResult.fitFLIM.promptTrace = ...
+        correction.fitFLIM.([setting.promptType 'Full']) ...
+            (1 : correction.fitFLIM.fit_end);
+    % The prompt needs to be three dimensional
+    fitResult.fitFLIM.promptTrace = ...
+        reshape(fitResult.fitFLIM.promptTrace, ...
+                [1 1 numel(fitResult.fitFLIM.promptTrace)]);
+    % Create the file name to save the IRF data
+    fitResult.fitFLIM.IRFfile = [filename, '.irf.ics'];
+    % Check that the file doesn't exist
+    if exist(fitResult.fitFLIM.IRFfile, 'file') == 2 && ...
+            ~setting.overwriteFiles
+        % Give a warning that the file already exists
+        uiwait(warndlg({sprintf('File %s already exists. ', ...
+                                fitResult.fitFLIM.IRFfile), ...
+                        'Choose a filename to save the IRF.'}, ...
+                       'Process FLIM: Warning'));
+        % Ask for a new file name or confirm the original file
+        [file, path] = ...
+            uiputfile({'*.irf.ics', 'MAT-files (*.irf.ics)'; ...
+                       '*.*',   'All Files (*.*)'}, ...
+                      'Save as', fitResult.fitFLIM.IRFfile);
+        % If box is closed or Cancel pressed, do not save
+        if ischar(file)
+            % Set the new filename
+            fitResult.fitFLIM.IRFfile = strcat(path, file);
+            % Save the file
+            saveIRF(fitResult.fitFLIM.promptTrace, ...
+                    [1 1], ...
+                    fitResult.fitFLIM.IRFfile, ...
+                    fitResult.fitFLIM.binWidth);
+        else
+            % File is 'none', because Cancel was pressed
+            fitResult.fitFLIM.IRFfile = 'none';
+        end
+    else
+        % If the file doesn't exist yet, save it directly
+        saveIRF(fitResult.fitFLIM.promptTrace, ...
+                [1 1], ...
+                fitResult.fitFLIM.IRFfile, ...
+                fitResult.fitFLIM.binWidth);
+    end
+end
+% End of "Save the IRF if this was requested"
+
+
+%% Save results if asked to do so
+if setting.saveLM
+    % Store the prompt for display
+    fitResult.fitFLIM.prompt = correction.fitFLIM.(setting.promptType);
+    % Store the prompt range for display
+    fitResult.fitFLIM.timeBin = correction.fitFLIM.timeBin;
+    % Store the good pixel data matrix
+    fitResult.fitFLIM.goodfit = correction.IRF.fit.goodfit;
+    % Create the file name to save the fit result data
+    fitResult.fitFLIM.LMfile = [filename, '.fit.mat'];
+    % Check that the file doesn't exist
+    if exist(fitResult.fitFLIM.LMfile, 'file') == 2 && ...
+            ~setting.overwriteFiles
+        % Give a warning that the file already exists
+        uiwait(warndlg({sprintf('File %s already exists. ', ...
+                                fitResult.fitFLIM.LMfile), ...
+                        'Choose a filename to save the data.'}, ...
+                       'Process FLIM: Warning'));
+        % Ask for a new file name or confirm the original file
+        [file, path] = ...
+            uiputfile({'*.fit.mat', 'MAT-files (*.fit.mat)'; ...
+                       '*.*',   'All Files (*.*)'}, ...
+                      'Save as', fitResult.fitFLIM.LMfile);
+        % If box is closed or Cancel pressed, do not save
+        if ischar(file)
+            % Set the new filename
+            fitResult.fitFLIM.LMfile = strcat(path, file);
+            % Create a temporary struct for saving. This is to save
+            % only the result of this iterration processing iterration
+            S.fitResult = fitResult;
+            S.setting = setting;
+            % Save the file
+            save(fitResult.fitFLIM.LMfile, '-struct', 'S');
+            clear S;
+        else
+            % File is 'none', because Cancel was pressed
+            fitResult.fitFLIM.LMfile = 'none';
+        end
+    else
+        % If the file doesn't exist yet, save it directly
+        % Create a temporary struct for saving. This is to save only
+        % the result of this iterration processing iterration
+        S.fitResult = fitResult;
+        S.setting = setting;
+        % Save the file
+        save(fitResult.fitFLIM.LMfile, '-struct', 'S');
+        clear S;
+    end
+end
+% End of "Save results if asked to do so"
+
 end
 

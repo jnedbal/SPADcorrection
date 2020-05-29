@@ -92,105 +92,109 @@ end
 
 %% Create titles for lifetime fits
 % Number of fit parameters
-display.nrNames = size(fitResult.A, 3) + ...
-                  size(fitResult.tau, 3) + ...
-                  size(fitResult.offset, 3) + ...
-                  size(fitResult.chi2, 3);
-% For stretched exponential, there is also stretch exponent H
-if isfield(fitResult, 'H')
-    display.nrNames = display.nrNames + 1;
-end
-display.order = zeros(1, display.nrNames);
-display.names = cell(size(display.order));
-display.graphNames = cell(size(display.order));
-% Offset
-display.names{1} = 'Z:';
-display.graphNames{1} = 'Offset Z';
-display.order(1) = numel(display.order) - 1;
-% Chi^2
-display.names{end} = [char([967, 178]), ':'];
-display.order(end) = numel(display.order);
-display.graphNames{end} = sprintf('Chi-squared %s', char([967, 178]));
-% Amplitudes and lifetimes
-if numel(display.names) == 4 || numel(display.names) == 5
-    % Single-exponential situation
-    display.names{2} = 'A:';
-    display.order(2) = 1;
-    display.graphNames{2} = 'Amplitude A';
-    display.names{3} = [char(964), ':'];
-    display.order(3) = 2;
-    display.graphNames{3} = ...
-        sprintf('Fluorescence Lifetime %s [ps]', char(964));
-else
-    % Double- or triple-exponential situation
-    for j = 0 : 2 : numel(display.names) - 3
-        display.names{j + 2} = ['A' char(8321 + j / 2) ':'];
-        display.order(j + 2) = 1 + j;
-        display.graphNames{j + 2} = ['Amplitude A', char(8321 + j / 2)];
-        display.names{j + 3} = [char([964, 8321 + j / 2]) ':'];
-        display.order(j + 3) = 2 + j;
-        display.graphNames{j + 3} = ...
-            sprintf('Fluorescence Lifetime %s [ps]', ...
-                    char([964, 8321 + j / 2]));
-    end
-end
-% Stretched exponential model
-if isfield(fitResult, 'H')
-    display.names{end - 1} = 'H:';
-    display.order(end - 1) = numel(display.order) - 2;
-    display.graphNames{end - 1} = 'Stretch Exponent H';
-end
+display.nrNames = numel(fitResult.fitFLIM.shortName);
+% Get the order in which the fit parameters are displayed
+display.order = [display.nrNames - 1, ...       % Offset is second from end
+                 1 : display.nrNames - 2, ...   % Amplitude & tau first
+                 display.nrNames];              % Chi^2 is last
+% Create short labels for the fit parameters, add a colon (:) to them
+display.names = cellfun(@(x) [x, ':'], fitResult.fitFLIM.shortName, ...
+                        'UniformOutput', false);
+% Create long labels for the fit parameters, including the units
+display.graphNames = ...
+    strcat(fitResult.fitFLIM.longName, ...
+           {' '}, ...
+           fitResult.fitFLIM.shortName, ...
+           regexprep(cellfun(@(x) [' [', x, ']'], ...
+                             fitResult.fitFLIM.units, ...
+                             'UniformOutput', false), ' \[\]', ''));
 % Create and index of the names in the order
 [~, display.index] = sort(display.order);
 % Create the selected index for the parameter that is being plotted
 display.selIndex = 3;
 
+%% Set the histogram limits
+display.img.histLimLabels = {'Image Auto', 'Global Auto', 'Manual'};
+
 %% Set the raw image as the default to display
 display.rawInterp = 'lma_param';
 
 %% Work out the time histogram bins and limits
-display.Xbins.exp = fitResult.binWidth * ...
+display.Xbins.exp = fitResult.fitFLIM.binWidth * ...
                     (0 : (fitResult.fitFLIM.fit_end - 1));
 display.Xlim.exp = display.Xbins.exp([1, end]);
-display.Xbins.fit = fitResult.binWidth * ...
+display.Xbins.fit = fitResult.fitFLIM.binWidth * ...
            (fitResult.fitFLIM.start : fitResult.fitFLIM.fit_end);
 display.Xlim.fit = display.Xbins.fit([1, end]);
-display.Xbins.fitResid = fitResult.binWidth * ...
+display.Xbins.fitResid = fitResult.fitFLIM.binWidth * ...
            (fitResult.fitFLIM.fit_start : fitResult.fitFLIM.fit_end);
 display.Xlim.fitResid = display.Xbins.fitResid([1, end]);
 
 
 %% Work out the images to display
-display.img.intensity = flipud(sum(fitResult.transient, 3));
-display.img.fit = flipud(squeeze(fitResult.(display.rawInterp)(:, :, 3)));
+% This is the index of the image currently displayed
+display.img.index = 1;
+% This is the index of the histogram limits currently used
+% This number is up to two numbers larger than the number of files open (N) 
+% if this value is N + 1, it uses automatic limits same for all images
+% if this value is N + 2, it uses only manual limits. It does not
+% automatically update them
+display.img.limIndex = 1;
+display.img.intensity = ...
+    flipud(sum(fitResult.in(display.img.index).transient, 3));
+display.img.fit = ...
+    flipud(squeeze(fitResult.out(display.img.index).(display.rawInterp)...
+                   (:, :, 3)));
 display.img.resid = ...
-    double(fitResult.transient(:, :, fitResult.fitFLIM.fit_start : end));
+    double(fitResult.in(display.img.index).transient(:, :, ...
+                                     fitResult.fitFLIM.fit_start : end));
 display.img.resid = display.img.resid - ...
-    fitResult.lma_fit(:, :, (end - size(display.img.resid, 3) + 1) : end);
+                    fitResult.out(display.img.index).lma_fit( ...
+                    :, :, (end - size(display.img.resid, 3) + 1) : end);
 display.img.resid = display.img.resid ./ ...
-    abs(sqrt(fitResult.lma_fit(:, :, ...
-                       (end - size(display.img.resid, 3) + 1 : end))));
-display.img.xlim = [0, size(fitResult.offset, 2)] + 0.5;
-display.img.ylim = [0, size(fitResult.offset, 1)] + 0.5;
-display.img.xpixLim = [0, size(fitResult.offset, 2) - 1];
-display.img.ypixLim = [0, size(fitResult.offset, 1) - 1];
+                    abs(sqrt(fitResult.out(display.img.index).lma_fit( ...
+                    :, :, (end - size(display.img.resid, 3) + 1 : end))));
+display.img.xlim = [0, size(fitResult.fitFLIM.goodfit, 2)] + 0.5;
+display.img.ylim = [0, size(fitResult.fitFLIM.goodfit, 1)] + 0.5;
+display.img.xpixLim = [0, size(fitResult.fitFLIM.goodfit, 2) - 1];
+display.img.ypixLim = [0, size(fitResult.fitFLIM.goodfit, 1) - 1];
 
 %% Work out the limits on the scales for each fit parameter
-display.goodfit.mask = repmat(fitResult.fitFLIM.goodfit, ...
-                              1, 1, size(fitResult.(display.rawInterp),3));
-% Only keep the parameters from good pixels
-display.goodfit.(display.rawInterp) = ...
-    fitResult.(display.rawInterp)(display.goodfit.mask);
-% Reshape the parameters to have a parameter per column
-display.goodfit.(display.rawInterp) = ...
-    reshape(display.goodfit.(display.rawInterp), ...
-            numel(display.goodfit.(display.rawInterp)) / ...
-                size(fitResult.(display.rawInterp), 3), ...
-            size(fitResult.(display.rawInterp), 3));
-display.goodfit.median = median(display.goodfit.(display.rawInterp));
-display.goodfit.std = std(display.goodfit.(display.rawInterp));
-display.goodfit.minLim = display.goodfit.median - 3 * display.goodfit.std;
-display.goodfit.maxLim = display.goodfit.median + 3 * display.goodfit.std;
+display.goodfit(1).mask = ...
+    repmat(fitResult.fitFLIM.goodfit, 1, 1, display.nrNames);
+
+for j = 1 : numel(fitResult.in)
+    % Only keep the parameters from good pixels
+    display.goodfit(j).(display.rawInterp) = ...
+        fitResult.out(j).(display.rawInterp)(display.goodfit(1).mask);
+    % Reshape the parameters to have a parameter per column
+    display.goodfit(j).(display.rawInterp) = ...
+        reshape(display.goodfit(j).(display.rawInterp), ...
+                numel(display.goodfit(j).(display.rawInterp)) / ...
+                    display.nrNames, ...
+                display.nrNames);
+    % Set the automated limits on histograms
+    display.goodfit(j).median = ...
+        median(display.goodfit(j).(display.rawInterp));
+    display.goodfit(j).std = ...
+        std(display.goodfit(j).(display.rawInterp));
+    display.goodfit(j).minLim = ...
+        display.goodfit(j).median - 3 * display.goodfit(j).std;
+    display.goodfit(j).maxLim = ...
+        display.goodfit(j).median + 3 * display.goodfit(j).std;
+end
+% Create limits covering all files
+j = j + 1;
+display.goodfit(j).median = ...
+    median(vertcat(display.goodfit(1 : j - 1).(display.rawInterp)));
+display.goodfit(j).std = ...
+    std(vertcat(display.goodfit(1 : j - 1).(display.rawInterp)));
+display.goodfit(j).minLim = ...
+    display.goodfit(j).median - 3 * display.goodfit(j).std;
+display.goodfit(j).maxLim = ...
+    display.goodfit(j).median + 3 * display.goodfit(j).std;
+
+
 
 %% Display the image
 close all
@@ -230,7 +234,15 @@ h.text.val.Ypix = uicontrol('Style', 'edit', ...
                             'BackgroundColor', [1 1 1], ...
                             'Callback', @edit_Callback, ...
                             'Tag', 'Ypix');
-
+h.text.navkeys(1) = uicontrol('Style', 'text', ...
+                              'String', {char(8593), ...
+                                         sprintf('%s %s %s', ...
+                                                 char(8592), ...
+                                                 char(8595), ...
+                                                 char(8594))}, ...
+                              'Position', pos + [pos(3), -60, 100, 30], ...
+                              'ForegroundColor', [0, 0.4470, 0.7410]);
+                      
 
 %% Create starting position for lifetime fits
 pos = pos + [0, 60, 0, 0];
@@ -307,11 +319,11 @@ h.line.ax2(1) = plot(display.Xbins.exp, zeros(size(display.Xbins.exp)));
 
 % Draw a line for start of the transient data
 h.line.ax2(3) = ...
-    plot([1, 1] * fitResult.fitFLIM.start * fitResult.binWidth, ...
+    plot([1, 1] * fitResult.fitFLIM.start * fitResult.fitFLIM.binWidth, ...
          h.axes(2).YLim);
 % Draw a line for start of the fit
-h.line.ax2(4) = ...
-    plot([1, 1] * fitResult.fitFLIM.fit_start * fitResult.binWidth, ...
+h.line.ax2(4) = plot( ...
+    [1, 1] * fitResult.fitFLIM.fit_start * fitResult.fitFLIM.binWidth, ...
     h.axes(2).YLim, 'Color', h.line.ax2(3).Color);
 % This will be the fit
 h.line.ax2(2) = plot(display.Xbins.fit, zeros(size(display.Xbins.fit)), ...
@@ -340,8 +352,9 @@ ylabel('Residue')
 % Draw the IRF on the right axis
 yyaxis right
 % if there is one common IRF for all pixels, plot it
-h.line.ax3(4) = plot(fitResult.binWidth * fitResult.fitFLIM.timeBin, ...
-                     zeros(size(fitResult.fitFLIM.timeBin)));
+h.line.ax3(4) = ...
+    plot(fitResult.fitFLIM.binWidth * fitResult.fitFLIM.timeBin, ...
+         zeros(size(fitResult.fitFLIM.timeBin)));
 if isvector(fitResult.fitFLIM.prompt)
     h.line.ax3(4).YData = fitResult.fitFLIM.prompt;
 end
@@ -355,8 +368,15 @@ yticks([])
 % Draw the lifetime map
 axes(h.axes(4))
 h.image(2) = ...
-    imagesc(fitResult.(display.rawInterp)(:, :, display.selIndex));
+    imagesc(fitResult.out(display.img.index).(display.rawInterp) ...
+        (:, :, display.selIndex));
 hold on
+
+% Draw two four dummy lines later used as a cross hair
+for j = 1 : 4
+    h.line.ax4(j) = plot([0 0], [0 0], 'g-');
+end
+
 cmap = parula(256);
 cmap(end, :) = [1 0 0]; % Make highest value red
 cmap(1, :) = [0 0 0];   % Make lowest value black
@@ -398,11 +418,6 @@ h.axes(4).YLim = display.img.ylim;
 
 
 
-% Draw two four dummy lines later used as a cross hair
-for j = 1 : 4
-    h.line.ax4(j) = plot([0 0], [0 0], 'g-');
-end
-
 %% Add a popupmenu (combo box) to choose linear or logarithmic plot
 pos = [aSize(2, [1, 2]) + aSize(2, [3, 4]) - [80, 40], 70, 30];
 h.pop(1) = uicontrol('Style', 'popupmenu', ...
@@ -427,10 +442,54 @@ h.pop(3) = uicontrol('Style', 'popupmenu', ...
                      'Callback', @pop_Callback);
 % If the lmaInterp field does not exist in the fitResult struct, make the
 % above popummenu disabled
-if ~isfield(fitResult, 'lmaInterp')
+if ~isfield(fitResult.out, 'lmaInterp')
     h.pop(3).Enable = 'off';
 end
+%% Add a popupmenu (combo box) for choosing the file
+pos = [aSize(1, 1), ...
+       fSize(4) - pos(4) - 10, ...
+       aSize(5, 1) + 0.5 * aSize(5, 3) - aSize(1, 1) + 35, ...
+       pos(4)];
+% Extract the filenames from the full links
+[~, fnames] = cellfun(@fileparts, {fitResult.in.fname}, ...
+                      'UniformOutput', false);
+h.pop(4) = uicontrol('Style', 'popupmenu', ...
+                     'String', fnames, ...
+                     'Position', pos, ...
+                     'Value', 1, ...
+                     'Callback', @pop_Callback);
+% Label the combo box
+h.text.navkeys(2) = uicontrol('Style', 'text', ...
+                              'String', {'PgUp', 'PgDown'}, ...
+                              'Position', [pos(1) + pos(3), ...
+                                           pos(2) - 15, ...
+                                           100, ...
+                                           pos(4) + 20], ...
+                              'ForegroundColor', [0, 0.4470, 0.7410]);
 
+
+%% Add a popupmenu (combo box) for choosing histogram limits behavior
+pos = [aSize(5, 1) + 0.5 * aSize(5, 3) - 35, ...
+       aSize(4, 2) - 35, ...
+       150, ...
+       pos(4)];
+% Check if only one file is open or more than one
+if numel(fnames) == 1
+    display.img.histLimSel = [1, 3];
+else
+    display.img.histLimSel = 1 : 3;
+end
+
+h.pop(5) = uicontrol('Style', 'popupmenu', ...
+                     'String', ...
+                     display.img.histLimLabels(display.img.histLimSel), ...
+                     'Position', pos, ...
+                     'Value', 1, ...
+                     'Callback', @pop_Callback);
+% Add a label to the popupmenu
+h.text.limLabel = uicontrol('Style', 'text', ...
+                            'String', 'Limits:', ...
+                            'Position', pos - [75, 5, 80, 0]);
 
 %% Add lifetime limits
 pos = [aSize(5, 1) + 0.5 * aSize(5, 3) - 35, aSize(4, 2), 70, 26];
@@ -444,12 +503,15 @@ h.spin(2) = uicontrol('Style', 'edit', ...
                     'Callback', @edit_Callback,...
                     'Tag', 'highTau');
 % Set the default limits
-display.CLim = [display.goodfit.minLim(3), display.goodfit.maxLim(3)];
+display.CLim = [display.goodfit(display.img.limIndex).minLim(3), ...
+                display.goodfit(display.img.limIndex).maxLim(3)];
 
 % Set the histogram limits. They are 15 % more on each side
 display.HLim = display.CLim + [-0.15, 0.15] * diff(display.CLim);
 % Choose the data for the histogram
-display.Hdata = fitResult.(display.rawInterp)(:, :, display.selIndex);
+display.Hdata = ...
+    fitResult.out(display.img.index).(display.rawInterp) ...
+        (:, :, display.selIndex);
 
 % Only select the data from within the histogram
 display.Hdata = display.Hdata(display.Hdata >= display.HLim(1) & ...
@@ -529,17 +591,28 @@ display.movedLine = 0;
                 display.selIndex = display.index(h.pop(2).Value);
 
                 % Update the image in the graph
-                h.image(2).CData = flipud(fitResult.(display.rawInterp) ...
-                    (:, :, display.selIndex));
+                h.image(2).CData = ....
+                    flipud(fitResult.out(display.img.index). ...
+                        (display.rawInterp)(:, :, display.selIndex));
 
-                % Update the limits on the range
-                display.CLim = ...
-                    [display.goodfit.minLim(display.selIndex), ...
-                     display.goodfit.maxLim(display.selIndex)];
+                % Update the limits on the range, unless it is NaN
+                if ~isnan(display.img.limIndex)
+                    display.CLim = ...
+                        [display.goodfit(display.img.limIndex). ...
+                            minLim(display.selIndex), ...
+                         display.goodfit(display.img.limIndex). ...
+                            maxLim(display.selIndex)];
+                    % Add the spinner values
+                    h.spin(1).String = num2str(round3(display.CLim(1)));
+                    h.spin(2).String = num2str(round3(display.CLim(2)));
+                else
+                    % With manual limits, the histogram image would not
+                    % update. This is a problem, that can be resolved by
+                    % marginally changing the value of the histogram
+                    % limits. This is done by adding eps to their value
+                    display.CLim = display.CLim + eps;
+                end
 
-                % Add the spinner values
-                h.spin(1).String = num2str(round3(display.CLim(1)));
-                h.spin(2).String = num2str(round3(display.CLim(2)));
 
                 % Update the lifetime graph
                 edit_Callback(h.spin(1))
@@ -550,6 +623,36 @@ display.movedLine = 0;
 
                 % Update the graph
                 updateGraphs;
+
+            case h.pop(4)   % Change the data shown to the file chosen
+                % Change the file from which the data shown
+                display.img.index = h.pop(4).Value;
+
+                % Update the histogram limits, if needed
+                pop_Callback(h.pop(5));
+
+                % Update the graphs by calling the popup callback again for
+                % the second handle
+                pop_Callback(h.pop(2));
+
+            case h.pop(5)   % Change the limits
+                % Check which option has been chosen
+                switch find(contains(display.img.histLimLabels, ...
+                        h.pop(5).String(h.pop(5).Value)))
+                    case 1  % Automatic image-specific limits
+                        % Use the index of the selected file
+                        display.img.limIndex = display.img.index;
+                    case 2  % Automatic global limits
+                        % Use the index one larger than the number of files
+                        display.img.limIndex = numel(display.goodfit);
+                    case 3  % Use manual limits
+                        % Use the index NaN
+                        display.img.limIndex = NaN;
+                end
+
+                % Update the graphs by calling the popup callback again for
+                % the second handle
+                pop_Callback(h.pop(2));
         end
     end
 
@@ -710,6 +813,26 @@ display.movedLine = 0;
                     % Update the graph
                     edit_Callback(h.text.val.Ypix);
                 end
+            case 'pagedown'
+                % Go to the next file, if it exists
+                if h.pop(4).Value == numel(fitResult.in)
+                    % There is no previous file to go to, end the call
+                    return
+                end
+                % Otherwise, increment to the next file
+                h.pop(4).Value = h.pop(4).Value + 1;
+                % Call the popum call back function to update the graph
+                pop_Callback(h.pop(4));
+            case 'pageup'
+                % Go to the previous file, if it exists
+                if h.pop(4).Value == 1
+                    % There is no further file to go to, end the call
+                    return
+                end
+                % Otherwise, increment to the next file
+                h.pop(4).Value = h.pop(4).Value - 1;
+                % Call the popum call back function to update the graph
+                pop_Callback(h.pop(4));
         end
     end
 
@@ -776,7 +899,8 @@ display.movedLine = 0;
                     display.CLim + [-0.15, 0.15] * diff(display.CLim);
                 % Choose the data for the histogram
                 display.Hdata = ...
-                    fitResult.(display.rawInterp)(:, :, display.selIndex);
+                    fitResult.out(display.img.index). ...
+                    (display.rawInterp)(:, :, display.selIndex);
 
                 % Only select the data from within the histogram
                 display.Hdata = ...
@@ -854,8 +978,9 @@ display.movedLine = 0;
             for i = 1 : numel(h.text.val.fit)
                 % Just show the raw fitted value
                 h.text.val.fit(i).String = ...
-                    num2str(round3(fitResult.lma_param ...
-                                   (rowIn, colIn, i)));
+                    num2str(round3( ...
+                    fitResult.out(display.img.index).lma_param ...
+                            (rowIn, colIn, i)));
             end
         else
             % Show both the interpolated and the non-interpolated value
@@ -874,9 +999,13 @@ display.movedLine = 0;
 
         % Draw the decay and fit
         set(h.line.ax2([3, 4]), 'YData', [0, 0])
-        h.line.ax2(1).YData = squeeze(fitResult.transient(rowIn, colIn,:));
-        yfitData = squeeze(fitResult.lma_fit(rowIn, colIn, :));
-        yfitData(yfitData < max(1, double(min(h.line.ax2(1).YData)))) =NaN;
+        h.line.ax2(1).YData = ...
+            squeeze(fitResult.in(display.img.index).transient ...
+                    (rowIn, colIn,:));
+        yfitData = squeeze(fitResult.out(display.img.index).lma_fit ...
+                                (rowIn, colIn, :));
+        yfitData(yfitData < max(1, double(min(h.line.ax2(1).YData)))) = ...
+            NaN;
         h.line.ax2(2).YData = yfitData;
         %h.axes(2).YLimMode = 'auto';
         %h.axes(2).YLim(1) = max(1, min(h.line.ax2(1).YData));
@@ -894,7 +1023,8 @@ display.movedLine = 0;
         end
 
         % Draw the colorbar line
-        h.line.ax7(3).YData = fitResult.(display.rawInterp)(rowIn, colIn, display.selIndex) * [1, 1];
+        h.line.ax7(3).YData = fitResult.out(display.img.index). ...
+            (display.rawInterp)(rowIn, colIn, display.selIndex) * [1, 1];
     end
 end
 
