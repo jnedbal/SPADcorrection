@@ -36,7 +36,7 @@ if isfield(correction, 'IRF') && isfield(correction.IRF, 'peak') && ...
         isfield(correction.IRF.peak, 'PosInterp')
     peakPos = correction.IRF.peak.PosInterp(:);
     % We need to swap the peak position around to make sure that longer
-    % delay in IRF means it gets mmoved forward in time
+    % delay in IRF means it gets moved forward in time
     peakPos = max(peakPos) - peakPos;
 else
     % If the peak position is not worked out yet, set it to zero

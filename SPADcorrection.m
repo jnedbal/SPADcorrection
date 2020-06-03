@@ -53,11 +53,87 @@
 %                                       from the experimental data file
 %   correction.IRF.linear             Linearized IRF measurement based on
 %                                       the CDM linearization routine
+%   correction.IRF.fit                Struct of IRF fit output parameters
+%   correction.IRF.fit.h              Exp-modified Gaussian amplitude
+%   correction.IRF.fit.mu             Exp-modified Gaussian peak
+%   correction.IRF.fit.sigma          Exp-modified Gaussian standard dev.
+%   correction.IRF.fit.tau            Exp-modified Gaussian decay constant
+%   correction.IRF.fit.offset         Exp-modified Gaussian offset
+%   correction.IRF.fit.exitFlag       Converged fit flag
+%                                       1 for successsful fit
+%                                       0 for failed fit
+%   correction.IRF.fit.goodfit        Matrix of good fits. This is 
+%                                       generated based on the similarity
+%                                       of the results, not meeting fit 
+%                                       stopping conditions. The value is
+%                                       1, i.e. good fit, if sigma is 
+%                                       between 0.5x and 1.5x median sigma,
+%                                       tau is between 0.5x and 1.5x median
+%                                       tau, and offset is not an outlier 
+%                                       according to 'isoutlier'.
+%   correction.IRF.peak             The peak, maximum, rising- and falling-
+%                                     edge positions, and full-width half-
+%                                     maximum of the fitted data. These 
+%                                     values are calculated by iterrative 
+%                                     fitting, as I could not find the
+%                                     analytical solution to the problem. 
+%                                     It needs looking at in the future, as
+%                                     the solution must exist.
+%   correction.IRF.peak.Pos           Exp-mod Gaussian peak position
+%   correction.IRF.peak.Max           Exp-mod Gaussian peak maximum
+%   correction.IRF.peak.risingHM      Exp-mod Gaussian peak rising edge
+%   correction.IRF.peak.fallingHM     Exp-mod Gaussian peak falling edge
+%   correction.IRF.peak.FWHM          Exp-mod Gaussian peak full-width at
+%                                       half maximum
+%   correction.IRF.peak.XXinterp      Below are further fields that 
+%                                       interpolate the above values, where
+%                                       the goodfit is not '1'
+%   correction.IRF.peak.FWHMinterp
+%   correction.IRF.peak.PosInterp
+%   correction.IRF.peak.risingHMinterp
+%   correction.IRF.peak.fallingHMinterp
+%   correction.IRF.peak.corrPosInterp   This is the peak position for the
+%                                         resampled and timing-skew
+%                                         corrected IRF
+%   correction.IRF.corrected        Linearized and timing skew-corrected
+%                                     IRF
 %   correction.noIRF                (Optional) This field is produced if
 %                                     needed during the IRF correction
 %                                     stage to store the non-corrected data
+%   correction.fitFLIM              A struct of parameters for
+%                                     Levenberg-Marquardt fluorescence
+%                                     lifetime decay fitting using SLIM
+%                                     Curve
+%   correction.fitFLIM.peak           Average bin index of IRF peak
+%   correction.fitFLIM.start          The starting bin of decay data, the
+%                                       IRF rising edge
+%   correction.fitFLIM.fit_start      The starting of the fit, the IRF 
+%                                       falling edge
+%   correction.fitFLIM.fit_end        The last bin index with useful data
+%                                       in all SPAD array pixels
+%   correction.fitFLIM.data_start     The fitst bin with useful data in all
+%                                       SPAD array pixels
+%   correction.fitFLIM.expPrompt      The experimental IRF array for all
+%                                       SPAD array pixels
+%   correction.fitFLIM.timeBin        The bin index range for experimental
+%                                       IRF s from all pixels
+%   correction.fitFLIM.mu             The average mu for the exGauss
+%                                       functions fitted to the
+%                                       experimental IRFs
+%   correction.fitFLIM.simPrompt      The simulated IRF array for all SPAD
+%                                       array pixels
+%   correction.fitFLIM.avgExpPrompt   The average experimental IRF
+%   correction.fitFLIM.avgExpPromptFull The average experimental IRF
+%                                       spanning the entire useful bin
+%                                       range
+%   correction.fitFLIM.avgSimPrompt   The average simulated IRF
+%   correction.fitFLIM.avgSimPromptFull The average simulated IRF
+%                                       spanning the entire useful bin
+%                                       range
+
+
 %
-%   The fields in the minial version of the corretion struct are:
+%   The fields in the minimal version of the corretion struct are:
 %   'calibratedBins', 'binWidth', 'avgBinWidth', and 'IRF.peak.PosInterp'
 %
 %   Four figures are produced, if required:
@@ -215,7 +291,7 @@ if ~isempty(correction.files.IRF)
     fitIRF(correction.IRF.linear);
     % Correct the bin size by the IRF
     correctCDMbyIRF;
-    % Create parameters for FLIM fitting by SlimCurve
+    % Create parameters for FLIM fitting by SLIM Curve
     fitFLIMparam;
 end
 
@@ -226,6 +302,8 @@ if ~isempty(correction.files.graphics)
                   fileparts(correction.files.binCorrection));
     analyzeCDMhist(correction.files.graphics, ...
                    fileparts(correction.files.binCorrection));
+    analyzeIRFmap(correction.files.graphics, ...
+                  fileparts(correction.files.binCorrection));
 end
 
 

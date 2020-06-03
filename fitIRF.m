@@ -30,8 +30,8 @@ function fitIRF(XYZimage)
 %                               is 1, i.e. good fit, if sigma is between
 %                               0.5x and 1.5x median sigma, tau is between
 %                               0.5x and 1.5x median tau, and offset is not
-%                               an  outlier according to 'isoutlier'.
-%   correction.peak         The peak, maximum, rising- and fallin-edge
+%                               an outlier according to 'isoutlier'.
+%   correction.peak         The peak, maximum, rising- and falling-edge
 %                             positions, and full-width half-maximum of the
 %                             fitted data. These values are calculated by
 %                             iterrative fitting, as I could not find the
@@ -154,6 +154,7 @@ for i = 1 : numberPixels
     sigma0 = 3;
     tau0 = 8;
     offset0 = median(pixHist);
+    % These are the initial guesses for the fit
     param0 = [h0 * tau0 * exp(1), mu0, sigma0, tau0, offset0];
     % Run the fit
     [fit.h(i), ...
@@ -179,6 +180,7 @@ fit.goodfit = (fit.sigma < 1.5 * median(fit.sigma(:))) & ...
               (~isoutlier(fit.offset)) & ...
               (fit.tau < 1.5 * median(fit.tau(:))) & ...
               (fit.tau > 0.5 * median(fit.tau(:)));
+% The first and last row are alway poor on my SPAD, never use them
 fit.goodfit([1, end], :) = false;
 
 %% Calculate the fit parameters

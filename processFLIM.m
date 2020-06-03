@@ -21,7 +21,7 @@ function [fitResult, setting] = processFLIM(setting)
 %   setting.saveICS     The decays will be saved into an ICS file for
 %                       analysis in TRI2. The file name(s) will be same as
 %                       the FLIMfile input, except for the extension, which
-%                       will be '.ICS'. Default TRUE.
+%                       will be '.ICS'. Default FALSE.
 %   setting.saveIRF     The prompt (IRF) will be saved into an ICS file for
 %                       analysis in TRI2. The file name(s) will be same as 
 %                       the FLIMfile input, except for the extension, which
@@ -37,10 +37,12 @@ function [fitResult, setting] = processFLIM(setting)
 %                       routing will be saved into a MAT file. The file 
 %                       name(s) will be same as the FLIMfile input, except 
 %                       for the extension, which will be '.FIT.MAT'.
-%                       Default TRUE.
-%   setting.interpLM    Interpolate LM data for noisy pixels.
+%                       Default FALSE.
+%   setting.interpLM    Interpolate LM data for noisy pixels. High noise
+%                       pixels are in false values positions in matrix
+%                       'correction.IRF.fit.goodfit'. Default TRUE.
 %   setting.displayFit  Open an interactive window displaying the results
-%                       of the fluorescence decay fits.
+%                       of the fluorescence decay fits. Default TRUE.
 %   setting.fitType     Choose the fitting model for the 
 %                       Levenberg-Marquardt routine. The options are 
 %                       'exp1', 'exp2', 'exp3', and 'expStretch', for
@@ -92,36 +94,48 @@ function [fitResult, setting] = processFLIM(setting)
 %   fitResult   A struct with the settings used in the run of this script.
 %               It has a number of fields, described below. Not all fields
 %               are produced each time. It depends on the 'setting' struct
-%               field values. The number of elements in 'fitResult' is the
-%               same as in 'setting.FLIMfile', i.e. one set of result for
-%               each raw SPAD data file analyzed.
+%               field values.
+%               fitResult is made of three fields, each being a struct.
+%   fitResult.fitFLIM   Contains parameters that are common to all files
+%                       analyzed. These are generic parameters used in
+%                       processing and displaying the results
+%   fitResult.in        Contains the input data used in the processing.
+%                       The number of elements in 'fitResult.in' is the
+%                       same as in 'setting.FLIMfile', i.e. one set of 
+%                       results for each raw SPAD data file analyzed.
+%   fitResult.out       Contains the output data produced by the scipt.
+%                       The number of elements in 'fitResult.out' is the
+%                       same as in 'fitResult.in', i.e. one set of results
+%                       for each raw SPAD data file analyzed.
 %
-%   fitResult.fname     Full link to the source file with the raw data from
-%                       the SPAD camera.
-%   fitResult.transient The corrected FLIM data from the SPAD camera.
-%   fitResult.lma_param Result of the fitting parameters as produced by 
-%                       SlimCurve.
-%   fitResult.lmaInterp Interpolated data in noisy pixels
-%   fitResult.lma_fit   Fitted decays produced by SlimCurve.
-%   fitResult.offset    Additive constant to the fitted decay.
-%   fitResult.chi2      Chi^2 (Chi-squared) error of the fit.
-%   fitResult.A         Amplitude of the fitted decay. It can have 1, 2 or
-%                       3 elements in the 3rd dimension depending on the
-%                       number of exponential elements in the fit.
-%   fitResult.tau       Lifetime of the fitted decay. It can have 1, 2 or
-%                       3 elements in the 3rd dimension depending on the
-%                       number of exponential elements in the fit.
-%   fitResult.H         Stretching exponent in the stretched-exponential
-%                       fit.
-%   fitResult.prompt    The IRF used in the fitting.
-%   fitResult.binWidth  Average TDC bin width used in the TRI2 fitting
-%                       expressed in nanoseconds
-%   fitResult.IRFfile   Full link to the produced IRF-containing file for
-%                       use in TRI2.
-%   fitResult.IRFfile   Full link to the produced ICS file with the
-%                       corrected data from the SPAD.
-%   fitResult.LMfile    Full link to the produced MAT file with the
-%                       corrected data from the SPAD camera.
+%   fitResult.fitFLIM.binWidth      Average corrected binWidth over the
+%                                   entire array of low DCR pixels,
+%                                   expressed in nanoseconds
+%   fitResult.fitFLIM.start         Bin index of decay rise start
+%   fitResult.fitFLIM.fit_start     Bin index where fitting starts
+%   fitResult.fitFLIM.fit_end       Bin index where fiting ends
+%   fitResult.fitFLIM.shortName     Abbreviated fit parameters
+%   fitResult.fitFLIM.longName      Full-length fit parameters
+%   fitResult.fitFLIM.units         Units of fit parameters
+%   fitResult.fitFLIM.promptTrace   The full length of the utilized IRF
+%   fitResult.fitFLIM.IRFfile       Link to output IRF file in ICS format
+%                                   for use in TRI2
+%   fitResult.fitFLIM.prompt        Selected part of IRF used in L-M fit
+%   fitResult.fitFLIM.timeBin       Bin indices of the selected part of IRF
+%   fitResult.fitFLIM.goodFit       Matrix of low DCR pixels
+%   fitResult.fitFLIM.LMfile        Link to L-M fit result output file in
+%                                   MAT file format
+%
+%   fitResult.in.fname              Input data file name
+%   fitResult.in.transient          The corrected transient for fitting
+%
+%   fitResult.out.lma_param         Resulting fit parameters produced by
+%                                   SLIM Curve
+%   fitResult.out.lma_fit           Resultant fit traces convolved with IRF
+%   fitResult.out.lmaInterp         Interpolated fit value for high DCR
+%                                   pixels
+%   fitResult.out.ICSfile           Link to corrected decay transients in
+%                                   ICS file format for use in TRI2
 %
 %   setting     A struct with the settings used in the analysis of the SPAD
 %               output data. It has the same fields as the 'setting' struct
@@ -131,17 +145,18 @@ function [fitResult, setting] = processFLIM(setting)
 %   processFLIM
 %
 % Other m-files required: exportICS2, mxSlimCurve, resampleHistogramPar,
-%                         saveIRF
+%                         saveIRF, displayFLIM
 % Subfunctions: check_call, fit_call, irf_call, ok_call
 % MAT-files required: Selected by 'setting.FLIMfile' field or by 
 %                     having a global variable 'correction' loaded
 %
-% See also: SPADcorrection, mxSlimCurve
+% See also: SPADcorrection, mxSlimCurve, displayFLIM
 
 % Jakub Nedbal
 % King's College London
-% Aug 2020
-% Last Revision: 26-May-2020 - Created support for interpolated fits.
+% Apr 2020
+% Last Revision: 29-May-2020 - Created support for diplay fit.
+% Revision: 26-May-2020 - Created support for interpolated fits.
 % Revision: 19-May-2020 - Created this file. No interactive output yet
 %
 % Copyright 2020 Jakub Nedbal
@@ -181,7 +196,7 @@ XYZimage = [];
 % This is used to save files for use in TRI2.
 if nargin == 0 || ~isfield(setting, 'saveICS')
     % Set an empty struct
-    setting.saveICS = true;
+    setting.saveICS = false;
 end
 % Check OK exists. This is a field to check that OK button has been pressed
 if ~isfield(setting, 'OK')
@@ -200,7 +215,7 @@ end
 % Check saveLM exists, instruction to save the results on the 
 % Levenberg-Marquardt fitting of the transient into a MATLAB.mat file
 if ~isfield(setting, 'saveLM')
-    setting.saveLM = true;
+    setting.saveLM = false;
 end
 % Check interpLM exists, instruction interpolated pixels which have high
 % noise
@@ -221,7 +236,7 @@ end
 % Check displayFit exists. It is an instruction to display the
 % interactive figure
 if ~isfield(setting, 'displayFit')
-    setting.displayFit = false;
+    setting.displayFit = true;
 end
 % Check correctionFile exists, the full path to the file containing the
 % correction struct with all the necessary calibration data.
@@ -573,6 +588,7 @@ if setting.interactive
 
     % Check if OK was pressed
     if ~setting.OK
+        fitResult = struct([]);
         return
     end
 end
@@ -616,6 +632,10 @@ if setting.runLM
     fitResult.fitFLIM.start = correction.fitFLIM.start;
     fitResult.fitFLIM.fit_start = correction.fitFLIM.fit_start;
     fitResult.fitFLIM.fit_end = correction.fitFLIM.fit_end;
+    fitResult.fitFLIM.data_start = correction.fitFLIM.data_start;
+    % Index of the useful bins in the transient
+    fitResult.fitFLIM.binIn = ...
+        correction.fitFLIM.data_start : correction.fitFLIM.fit_end;
 
     % Create an order of the results in the output results matrix
     switch setting.fitType
@@ -779,16 +799,16 @@ for i = 1 : numel(setting.FLIMfile)
     
     %% Create the transient for display or ICS file
     if setting.runLM || setting.saveICS
-        % Save the entire transient
+        % Keep the useful part of the transient
         fitResult.in(i).transient = ...
-            corrHist(:, :, 1 : correction.fitFLIM.fit_end);
+            corrHist(:, :, fitResult.fitFLIM.binIn);
     end
 
     %% Save the ICS file for TRI2 analysis if this was requested
     if setting.saveICS
         % Range is the time range of the prompt expressed in seconds
         range = fitResult.fitFLIM.binWidth * ...
-                size(fitResult.out(i).transient, 3) * 1e-9;
+                numel(fitResult.fitFLIM.binIn) * 1e-9;
         % Create the file name to save the data
         [path, file] = fileparts(setting.FLIMfile{i});
         fitResult.out(i).ICSfile = fullfile(path, [file, '.ics']);
@@ -809,14 +829,18 @@ for i = 1 : numel(setting.FLIMfile)
                 % Set the new filename
                 fitResult.out(i).ICSfile = strcat(path, file);
                 % Save the file
-                exportICS2(transient, fitResult.out(i).ICSfile, range);
+                exportICS2(fitResult.in(i).transient, ...
+                           fitResult.out(i).ICSfile, ...
+                           range);
             else
                 % File is 'none', because Cancel was pressed
                 fitResult.out(i).ICSfile = 'none';
             end
         else
             % If the file doesn't exist yet, save it directly
-            exportICS2(transient, fitResult.out(i).ICSfile, range);
+            exportICS2(fitResult.in(i).transient, ...
+                       fitResult.out(i).ICSfile, ...
+                       range);
         end
     end
 end
@@ -827,7 +851,7 @@ end
 if setting.saveIRF || setting.saveLM
     % Create a different file name, depending on whether just one file is
     % being analyzed or more than one
-    if numel(setting.FLIMfile{i}) == 1
+    if numel(setting.FLIMfile) == 1
         % Create the file name to save the data
         [path, file] = fileparts(setting.FLIMfile{1});
         filename = fullfile(path, file);
@@ -847,13 +871,12 @@ if setting.saveIRF
     % Prepare the prompt. It will be a single prompt for all pixel made
     % either by experimental prompt averaging or by an exponentially
     % modified Gaussian model
-    fitResult.fitFLIM.promptTrace = ...
-        correction.fitFLIM.([setting.promptType 'Full']) ...
-            (1 : correction.fitFLIM.fit_end);
+    fitResult.fitFLIM.promptTrace = correction.fitFLIM. ...
+        ([setting.promptType 'Full'])(fitResult.fitFLIM.binIn);
     % The prompt needs to be three dimensional
     fitResult.fitFLIM.promptTrace = ...
         reshape(fitResult.fitFLIM.promptTrace, ...
-                [1 1 numel(fitResult.fitFLIM.promptTrace)]);
+                [1, 1, numel(fitResult.fitFLIM.binIn)]);
     % Create the file name to save the IRF data
     fitResult.fitFLIM.IRFfile = [filename, '.irf.ics'];
     % Check that the file doesn't exist
@@ -892,15 +915,18 @@ if setting.saveIRF
 end
 % End of "Save the IRF if this was requested"
 
+%% Produce a field if output file is to be saved or results displayed
+if setting.saveLM || setting.displayFit
+    % Store the good pixel data matrix
+    fitResult.fitFLIM.goodfit = correction.IRF.fit.goodfit;
+    % Store the prompt range for display
+    fitResult.fitFLIM.timeBin = correction.fitFLIM.timeBin;
+    % Store the prompt for display
+    fitResult.fitFLIM.prompt = correction.fitFLIM.(setting.promptType);
+end    
 
 %% Save results if asked to do so
 if setting.saveLM
-    % Store the prompt for display
-    fitResult.fitFLIM.prompt = correction.fitFLIM.(setting.promptType);
-    % Store the prompt range for display
-    fitResult.fitFLIM.timeBin = correction.fitFLIM.timeBin;
-    % Store the good pixel data matrix
-    fitResult.fitFLIM.goodfit = correction.IRF.fit.goodfit;
     % Create the file name to save the fit result data
     fitResult.fitFLIM.LMfile = [filename, '.fit.mat'];
     % Check that the file doesn't exist
@@ -943,6 +969,11 @@ if setting.saveLM
     end
 end
 % End of "Save results if asked to do so"
+
+%% Display the results if asked to do so
+if setting.displayFit
+    displayFLIM(fitResult);
+end
 
 end
 

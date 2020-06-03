@@ -7,7 +7,7 @@ global correction
 % of the start of the fitting. 'fit_end' is the end of the fit. 
 
 % Make a comment
-fprintf('Running IRF correction. It make take a while. Stand by...\n')
+fprintf('Running IRF correction. It may take a while. Stand by...\n')
 % First start by shifting the IRF
 correction.IRF.corrected = resampleHistogramPar(correction.IRF.raw);
 
@@ -16,13 +16,19 @@ correction.IRF.corrected = resampleHistogramPar(correction.IRF.raw);
     max(sum(sum(correction.IRF.corrected .* ...
                 uint32(correction.IRF.fit.goodfit), 1), 2));
 
-% Find the starting of the fit, rising edge
+% Find the starting of the fit, the rising edge
+% 02-Jun-2020: I added the factor of three to expand the start of the fit.
+% While I learned from Paul Barber that the start should be the position of
+% the steepest gradient on the rising edge, in practice, it should be
+% probably more like the start of the rise. Adding factor of x3 solved it.
+% Now I have better fits at the start of the decay that before, when there
+% was no multiplicative factor.
 correction.fitFLIM.start = ...
     round(mean(correction.fitFLIM.peak - ...
-          (correction.IRF.peak.PosInterp(:) - ...
-           correction.IRF.peak.risingHMinterp(:))));
+          3 * (correction.IRF.peak.PosInterp(:) - ...
+               correction.IRF.peak.risingHMinterp(:))));
 
-% Find the starting edge
+% Find the starting of the fit index
 correction.fitFLIM.fit_start = ...
     round(mean(correction.fitFLIM.peak + ...
           (correction.IRF.peak.fallingHMinterp(:) - ...
@@ -42,6 +48,11 @@ peakRange = correction.lastBin - ...
 inR = inR(inC);
 % Store the end position
 correction.fitFLIM.fit_end = floor(peakRange(inR, inC));
+
+% Added 02-Jun-2020
+% Find the start of consistent data. This is to account for the timing skew
+peakRange = correction.IRF.peak.PosInterp(:);
+correction.fitFLIM.data_start = ceil(max(peakRange) - min(peakRange));
 
 % Store the experimental prompt
 % Find the index of the prompt
