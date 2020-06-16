@@ -88,7 +88,16 @@ tic
 
 % Run it in parallel if it is helpful and toolbox is available
 if isParCompAvailable && isParCompHelpful
-    % Divide the whole dataset into 4 chunks
+    % parfor loop has got a peculiar behavior, where it cannot work with
+    % variables that have been loaded from a MAT file. The solution is to
+    % explicitly make them copies of themselves. Weird, but it works
+    firstCalBin = firstCalBin; %#ok<*ASGSL,*NODEF>
+    lastCalBin = lastCalBin;
+    realBinWidth = realBinWidth;
+    linBinWidth = linBinWidth;
+    peakPos = peakPos;
+    % Divide the whole dataset into a number chunks equal to the maximum
+    % number of threads available on the machine
     chunks = int32(maxNumCompThreads);
     % Each chunk is a block of a number of pixels
     block = numberPixels / chunks;
@@ -107,7 +116,7 @@ if isParCompAvailable && isParCompHelpful
                                      realBinWidth(:, index), ...
                                      linBinWidth(index), ...
                                      peakPos(index)); ...
-                                     %#ok<IDISVAR,NODEF,PFIIN,PFBNS>
+                                     %#ok<PFBNS>
     end
     % Concatenate the results into a same matrix
     corrHist = horzcat(cH{:});
@@ -118,7 +127,7 @@ else
                                 lastCalBin, ...
                                 realBinWidth, ...
                                 linBinWidth, ...
-                                peakPos); %#ok<NODEF>
+                                peakPos);
 end
 % Reshape the matrix to get back to the size of the image array
 corrHist = reshape(corrHist', inputSize);

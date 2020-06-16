@@ -9,22 +9,26 @@
  * Inputs: inputHist, firstCalBin, lastCalBin, realBinWidth, linearBinWidth
  * Output: corrHist
  *
- * inputHist      - raw TDC histogram (MxN uint32 array),
+ * inputHist      - Raw TDC histogram array (MxN uint32 array),
  *                  where M is number of bins, N is number of pixels
- * firstCalBin    - 1xN int32 vector of first indices of calibrated bins
- * lastCalBin     - 1xN int32 vector of last indices of calibrated bins
- * realBinWidth   - matrix of calibrated bin widths (MxN double array)
- * linearBinWidth - 1xN double vector of linearized bin widths
+ * firstCalBin    - First indices of calibrated bins (1xN int32 vector)
+ *                  Calibrated bins are those in the TDC range containing 
+ *                  useful data
+ * lastCalBin     - Last indices of calibrated bins (1xN int32 vector)
+ * realBinWidth   - Array of calibrated bin widths (MxN double array)
+ * linearBinWidth - Linearized bin widths (1xN double vector)
+ * peakPos        - Array of IRF peak positions (MxN double)
  * 
  * corrHist       - MxN uint32 matrix with resampled TDC histograms
  *
  * The calling syntax is:
  *
- *		corrHist = arrayProduct(inputHist, ...
- *                              firstCalBin, ...
- *                              lastCalBin, ...
- *                              realBinWidth, ...
- *                              linearBinWidth)
+ *		corrHist = syntheticPhotons(inputHist, ...      % MxN uint32
+ *                                  firstCalBin, ...    % 1xN int32
+ *                                  lastCalBin, ...     % 1xN int32
+ *                                  realBinWidth, ...   % MxN double
+ *                                  linearBinWidth, ... % 1xN double
+ *                                  peakPos)            % MxN double
  *
  *
  * Copyright 2020 Jakub Nedbal

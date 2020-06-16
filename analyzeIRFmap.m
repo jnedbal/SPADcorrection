@@ -376,6 +376,18 @@ end
 % A cell with with graphics formats
 formats = {'png', '-dpng'; 'eps', '-depsc'; 'pdf', '-dpdf'};
 
+% Make the font sizes the same
+set(h.ax([2 3 5 6]), 'FontSize', h.ax(1).FontSize);
+% Get rid of the overlapping zeros in the two adjacent axes
+h.ax(3).XTickLabel{1} = '';
+h.ax(6).XTickLabel{1} = '';
+% Get the page size correct for proper PDF export
+h.fig.Units = 'centimeters';
+h.fig.PaperUnits = h.fig.Units;
+h.fig.PaperPosition = [0, 0, h.fig.Position([3, 4])];
+h.fig.PaperSize = h.fig.Position([3, 4]);
+h.fig.PaperPositionMode = 'auto';
+
 % Go through all requested formats
 for i = 1 : numel(graphics)
     % Check if the requested format is one of the allowed ones
