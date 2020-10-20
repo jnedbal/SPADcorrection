@@ -213,14 +213,16 @@ CDMfiles = strcat(path, file);
 % Locate the IRF file
 [file, path] = uigetfile({'*.mat', 'MATLAB Files (*.mat)'; ...
                           '*.*', 'All Files (*.*)'}, ...
-                         'Select IRF file');
+                         'Select IRF file(s)', ...
+                         'MultiSelect', 'on');
 
 % Keep the file empty if there is no IRF to process
 if isequal(file, 0) || isequal(path, 0)
     correction.files.IRF = [];
 else
-    % Store the IRF file name for later
-    correction.files.IRF = fullfile(path, file);
+    % Store the IRF file name(s) for later
+    % correction.files.IRF = fullfile(path, file);
+    correction.files.IRF = strcat(path, file);
 end
 
 
@@ -264,7 +266,7 @@ correction.files.binCorrection = fullfile(path, file);
 
 
 %% Load the CDM data and store it into the correction global variable
-loadCDMdata(CDMfiles);
+[correction.CDM, correction.files.CDMfiles] = loadSPADdata(CDMfiles);
 
 
 %% Analyze the code density map data. Load all the selected files and 
@@ -275,17 +277,17 @@ analyzeCDM;
 %% Run IRF correction, if the instrument function is loaded and linearized
 if ~isempty(correction.files.IRF)
     % Make a comment
-    fprintf('Loading IRF file %s...\n', correction.files.IRF);
+    % fprintf('Loading IRF file %s...\n', correction.files.IRF);
     % Load the IRF file
-    load(correction.files.IRF, 'XYZimage')
+    % load(correction.files.IRF, 'XYZimage')
 
     % Linearize the IRF data
-    correction.IRF.raw = XYZimage;
+    correction.IRF.raw = loadSPADdata(correction.files.IRF);
     % Make a comment
     fprintf(['Linearizing the IRF. This may take a while,\n', ...
              'depending on the number of photons.\n']);
     % Run the linearization routine
-    correction.IRF.linear = resampleHistogramPar(XYZimage);
+    correction.IRF.linear = resampleHistogramPar(correction.IRF.raw);
 
     % Fit the exponentially modified Gaussian models to the IRF data
     fitIRF(correction.IRF.linear);
