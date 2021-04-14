@@ -35,19 +35,27 @@ correction.fitFLIM.fit_start = ...
            correction.IRF.peak.PosInterp(:))));
 
 % Find the ending edge
-% To get the ending edge, find the peak with the lowest peak position and
-% subtract it from the width of the CDM
-peakRange = correction.lastBin - ...
-            correction.firstBin - ...
-            correction.IRF.peak.PosInterp;
-% Find the lowest peak position in each row
-[m, inR] = min(peakRange);
-% Find the column index of the lowest peak position
-[~, inC] = min(m);
-% Find the row index of the lowest peak position
-inR = inR(inC);
-% Store the end position
-correction.fitFLIM.fit_end = floor(peakRange(inR, inC));
+% The code below does not work if the rep rate during the CDM measurement
+% is not the same as the reprate in the IRF experiment
+% The temporary solution is:
+correction.fitFLIM.fit_end = ...
+    floor(correction.fitFLIM.start + ...
+    min(correction.lastBin(:) - ...
+        correction.firstBin(:) - ...
+        correction.IRF.peak.PosInterp(:)));
+% % To get the ending edge, find the peak with the lowest peak position and
+% % subtract it from the width of the CDM
+% peakRange = correction.lastBin - ...
+%             correction.firstBin - ...
+%             correction.IRF.peak.PosInterp;
+% % Find the lowest peak position in each row
+% [m, inR] = min(peakRange);
+% % Find the column index of the lowest peak position
+% [~, inC] = min(m);
+% % Find the row index of the lowest peak position
+% inR = inR(inC);
+% % Store the end position
+% correction.fitFLIM.fit_end = floor(peakRange(inR, inC));
 
 % Added 02-Jun-2020
 % Find the start of consistent data. This is to account for the timing skew

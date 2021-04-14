@@ -162,6 +162,7 @@ display.img.xlim = [0, size(fitResult.fitFLIM.goodfit, 2)] + 0.5;
 display.img.ylim = [0, size(fitResult.fitFLIM.goodfit, 1)] + 0.5;
 display.img.xpixLim = [0, size(fitResult.fitFLIM.goodfit, 2) - 1];
 display.img.ypixLim = [0, size(fitResult.fitFLIM.goodfit, 1) - 1];
+display.img.coords = [96, 64, 1; 96, 64, -1];
 
 %% Work out the limits on the scales for each fit parameter
 display.goodfit(1).mask = ...

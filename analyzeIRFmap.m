@@ -401,3 +401,5 @@ for i = 1 : numel(graphics)
                    sprintf('IRFcorrection.%s', formats{ftype, 1})),...
           formats{ftype, 2})
 end
+
+saveas(h.fig, fullfile(folder, 'IRFcorrection.fig'))

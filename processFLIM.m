@@ -3,7 +3,7 @@ function [fitResult, setting] = processFLIM(setting)
 % corrections to the CDM linearization data. Essentially, it corrects for
 % the fact, that calibration of the bin size, achieved by providing a
 % precise known clock during the CDM measurement is affected by the SPAD
-% jitter. This routine takes the full-width hal-maximum of the IRF into
+% jitter. This routine takes the full-width half-maximum of the IRF into
 % account to correct the bin size.
 %
 % Syntax: [fitResult, setting] = processFLIM(setting)
@@ -749,6 +749,7 @@ for i = 1 : numel(setting.FLIMfile)
     % Check if L-M fitting is required
     if setting.runLM
         % Reshape the data for decay analysis
+        
         transient = ...
             reshape(corrHist, imSize(1) * imSize(2), imSize(3))';
         % Select only the part of the curves that should be fitted
@@ -889,7 +890,7 @@ if setting.saveIRF
                        'Process FLIM: Warning'));
         % Ask for a new file name or confirm the original file
         [file, path] = ...
-            uiputfile({'*.irf.ics', 'MAT-files (*.irf.ics)'; ...
+            uiputfile({'*.irf.ics', 'ICS-files (*.irf.ics)'; ...
                        '*.*',   'All Files (*.*)'}, ...
                       'Save as', fitResult.fitFLIM.IRFfile);
         % If box is closed or Cancel pressed, do not save
