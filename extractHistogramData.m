@@ -16,7 +16,19 @@ XYZimage = reshape(XYZimage, numberPixels, numberBins)';
 % Extract idealized bin width
 %linBinWidth = reshape(correction.idealBinWidth, numberPixels, numberBins);
 %linBinWidth = max(linBinWidth, [], 2);
-linBinWidth = correction.avgBinWidth(:);
+if isfield(correction, 'globalBinWidth')
+    % If global Bin Width has been specified, use that
+    if isfield(correction.globalBinWidth, 'corr')
+        % If the bin width from the good fits is available, use that
+        linBinWidth = correction.globalBinWidth.corr;
+    else
+        % Otherwise use bin width calculated from all pixels
+        linBinWidth = correction.globalBinWidth.raw;
+    end
+else
+    % If the global bin width is not available, calculate it
+    linBinWidth = mean(correction.avgBinWidth(:));
+end
 
 % Find the first calibrated bin for each pixel
 [~, firstCalBin] = max(correction.calibratedBins, [], 3);
@@ -33,8 +45,9 @@ lastCalBin = firstCalBin + nrBins;
 
 % If a field called correction.IRF.peak.PosInterp exists, provide that, too
 if isfield(correction, 'IRF') && isfield(correction.IRF, 'peak') && ...
-        isfield(correction.IRF.peak, 'PosInterp')
-    peakPos = correction.IRF.peak.PosInterp(:);
+        isfield(correction.IRF.peak, 'Pos')
+    %peakPos = correction.IRF.peak.PosInterp(:);
+    peakPos = correction.IRF.peak.Pos(:);
     % We need to swap the peak position around to make sure that longer
     % delay in IRF means it gets moved forward in time
     peakPos = max(peakPos) - peakPos;

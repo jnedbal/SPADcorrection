@@ -16,7 +16,7 @@
  *                  useful data
  * lastCalBin     - Last indices of calibrated bins (1xN int32 vector)
  * realBinWidth   - Array of calibrated bin widths (MxN double array)
- * linearBinWidth - Linearized bin widths (1xN double vector)
+ * linearBinWidth - Linearized bin width (double number)
  * peakPos        - Array of IRF peak positions (MxN double)
  * 
  * corrHist       - MxN uint32 matrix with resampled TDC histograms
@@ -27,9 +27,13 @@
  *                                  firstCalBin, ...    % 1xN int32
  *                                  lastCalBin, ...     % 1xN int32
  *                                  realBinWidth, ...   % MxN double
- *                                  linearBinWidth, ... % 1xN double
+ *                                  linearBinWidth, ... % double
  *                                  peakPos)            % MxN double
  *
+ * Jakub Nedbal
+ * King's College London
+ * May 2020
+ * Last Revision: 15-Apr-2021 - Make linearBinWidth a number not a vector
  *
  * Copyright 2020 Jakub Nedbal
  * BSD license
@@ -94,19 +98,20 @@ void validateInputs(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     if (!mxIsDouble(__linearBinWidth) || mxIsComplex(__linearBinWidth))
     {
         mexErrMsgIdAndTxt( "MATLAB:syntheticPhotons:invalidInputType",
-            "5th input must be a double vector.");
+            "5th input must be a double number.");
     }
 
     /* Check the array sizes */
     if (mxGetN(__inputHist) != mxGetNumberOfElements(__firstCalBin) || 
             mxGetN(__inputHist) != mxGetNumberOfElements(__lastCalBin) || 
             mxGetN(__inputHist) != mxGetN(__realBinWidth) || 
-            mxGetN(__inputHist) != mxGetNumberOfElements(__linearBinWidth))
+            mxGetNumberOfElements(__linearBinWidth) != 1)
     {
         mexErrMsgIdAndTxt( "MATLAB:max_in_place:wrongInputsSize",
             "2nd dimension of 1st input is not the same as "
-            "number of elements in 2nd, 3rd or 5th input and "
-            "the same as the 2nd dimension of the fourth input.");
+            "number of elements in 2nd, 3rd input and "
+            "the same as the 2nd dimension of the fourth input or"
+            "the 5th input is not a single number.");
     }
 
     /* Check the array sizes */
@@ -154,8 +159,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
                        Vector of last calibrated bins for each pixel */
     double *realBinWidth;   /* input matrix 
                        Matrix of actual TDC bin widths */
-    double *linearBinWidth; /* input matrix 
-                       Vector of linearized bin widths for each pixel */
+    double linearBinWidth;  /* input matrix 
+                       Double number of linearized bin widths */
     double *peakPos;        /* input matrix 
                        Vector of corrected peak positions */
     double randMax;         /* number
@@ -194,7 +199,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     lastCalBin = (int *) mxGetData(__lastCalBin);
     /* create pointers to the double arrays in the input matrices  */
     realBinWidth = mxGetPr(__realBinWidth);
-    linearBinWidth = mxGetPr(__linearBinWidth);
+    linearBinWidth = mxGetScalar(__linearBinWidth);
     /* Only if 6 input arguments are used */
     if (nrhs == 6)
     {
@@ -257,8 +262,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
                 // Calculate the bin number of the simulated photon in the
                 // linearized histogram bins
-                photonIndex = (int) floor(photonTime / 
-                                          linearBinWidth[pixel]);
+                photonIndex = (int) floor(photonTime / linearBinWidth);
                 // mexPrintf("Photon index %d, ", photonIndex);
 
                 // Add pixel offset to the pixel index
@@ -275,7 +279,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
         // It is necessary to get rid of the last bin, as this will
         // not be complete and it would skew the data.
         // Find the index of the last bin
-        photonIndex = (int) floor(cumBinWidth / linearBinWidth[pixel]);
+        photonIndex = (int) floor(cumBinWidth / linearBinWidth);
         // Add pixel offset to the bin index
         photonIndex += pixelOffset;
         // Set this index to 0 to delete the conten of the last bin

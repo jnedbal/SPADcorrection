@@ -39,8 +39,9 @@ function analyzeIRFmap(graphics, folder)
 % King's College London
 % June 2020
 % Last Revision:  03-June-2020 - First working prototype
+% Last Revision:  15-Apr-2021  - Added support for global bin width
 %
-% Copyright 2020 Jakub Nedbal
+% Copyright 2020-21 Jakub Nedbal
 %
 % Redistribution and use in source and binary forms, with or without
 % modification, are permitted provided that the following conditions are
@@ -67,8 +68,8 @@ function analyzeIRFmap(graphics, folder)
 
 
 global correction
-global pixHist
-global pixIndex
+global currPeak
+global fitRange
 
 
 
@@ -100,15 +101,15 @@ h.ax(1) = axes('Units', 'pixels', 'Position', aSize(1, :));
 
 % Create surface data
 rawSurfData = ...
-    flipud(correction.IRF.peak.PosInterp .* correction.avgBinWidth);
+    flipud(correction.IRF.peak.Pos .* correction.avgBinWidth);
 % Plot the peak position of the IRF
 h.ax1.surf = surf(rawSurfData);
 % Remove the obscuring lines
 h.ax1.surf.EdgeColor = 'none';
 % Set the axis limits to be tight
-h.ax(1).XLim = [0, size(correction.IRF.peak.PosInterp, 2) - 1];
+h.ax(1).XLim = [0, size(correction.IRF.peak.Pos, 2) - 1];
 h.ax(1).XTick = [h.ax(1).XTick, h.ax(1).XLim(2)];
-h.ax(1).YLim = [0, size(correction.IRF.peak.PosInterp, 1) - 1];
+h.ax(1).YLim = [0, size(correction.IRF.peak.Pos, 1) - 1];
 h.ax(1).YTick = [h.ax(1).YTick, h.ax(1).YLim(2)];
 % Add box around the graph
 h.ax(1).Box = 'on';
@@ -182,28 +183,86 @@ h.leg(1).Position(2) = aSize(2, 2) + 10;
 %% Now correct the IRF and find the peak positions
 % Create a waitbar
 hwaitbar = waitbar(0, '', ...
-                   'Name', 'Fitting IRF with exGaussian function...');
+                   'Name', 'Finding IRF parameters...');
 % Make it a big higher
 hwaitbar.Position(4) = hwaitbar.Position(4) + 10;
 
 % Run the linearization routine
 corrIRF = resampleHistogramPar(correction.IRF.raw);
 corrIRF = reshape(corrIRF, ...
-                  size(corrIRF, 1) * size(corrIRF, 2), size(corrIRF, 3));
+                  size(corrIRF, 1) * size(corrIRF, 2), size(corrIRF, 3))';
 corrIRF = double(corrIRF);
 % Create a matrix of of peak positions
-peakPos = correction.IRF.peak.PosInterp;
+peakPos = correction.IRF.peak.Pos;
 % Create a matrix of bin indices
-pixIndex = (1 : size(corrIRF, 2));
+%pixIndex = (1 : size(corrIRF, 2));
 % Fit parameters
-fitParam = zeros(1, 5);
+%fitParam = zeros(1, 5);
 % Guess the first peak position
-[~, fitParam(2)] = max(corrIRF(find(correction.IRF.fit.goodfit, 1), :));
+%[~, fitParam(2)] = max(corrIRF(find(correction.IRF.fit.goodfit, 1), :));
 % total number of pixels
-numberPixels = size(corrIRF, 1);
+numberPixels = size(corrIRF, 2);
 
-% Set options for the minimization function
+%% Smoothen the data to find the peaks
+IRFsmooth = smoothdata(corrIRF, 1, ...
+                       correction.IRF.fit.param.filter.model, ...
+                       correction.IRF.fit.param.filter.kernel);
+
+
+%% Find the peaks
+[peak, index] = max(IRFsmooth);
+% Setup a zoom of relevant fit data
+fitRange = (-49 : 49)';
+% Fixed fit parameters
+B = 0;      % Peak Position
+
+% % Set options for the minimization function
+% for i = find(correction.IRF.fit.goodfit)'
+%     if mod(i, 100) == 0
+%         if ishandle(hwaitbar)
+%             % Estimated time to completion
+%             eta = numberPixels / i * toc / 86400;
+%             if isinf(eta); eta = 0; end
+%             % Update the waitbar
+%             waitbar(i / numberPixels, ...
+%                     hwaitbar, ...
+%                     sprintf('%d of %d\n%s (%s ETA)', ...
+%                             i, ...
+%                             numberPixels, ...
+%                             datestr(toc / 86400, 'HH:MM:SS'), ...
+%                             datestr(eta, 'HH:MM:SS')));
+%         end
+%     end
+%     % Fit the linearized IRF
+%     
+%     pixHist = corrIRF(i, :);
+%     % These are the initial guesses for the fit
+%     param0 = [correction.IRF.fit.h(i), ...
+%               fitParam(2), ...
+%               correction.IRF.fit.sigma(i), ...
+%               correction.IRF.fit.tau(i), ...
+%               correction.IRF.fit.offset(i)];
+%     % Run the fit
+%     [fitParam(1), ...
+%         fitParam(2), ...
+%         fitParam(3), ...
+%         fitParam(4), ...
+%         fitParam(5)] = exgfit(param0);
+%     % Find the position of the peak, and the the maximum of the peak
+%     % Minimization function
+%     mFun = @(x) (-(exGauss(x, ...
+%                            fitParam(1), ...
+%                            fitParam(2), ...
+%                            fitParam(3), ...
+%                            fitParam(4), ...
+%                            fitParam(5))));
+%     % Run minimization routine to find the peak position
+%     peakPos(i) = fminsearch(mFun, fitParam(2));
+% end
+
+options = optimset('Display', 'off');
 for i = find(correction.IRF.fit.goodfit)'
+    % update the waitbar
     if mod(i, 100) == 0
         if ishandle(hwaitbar)
             % Estimated time to completion
@@ -219,33 +278,18 @@ for i = find(correction.IRF.fit.goodfit)'
                             datestr(eta, 'HH:MM:SS')));
         end
     end
-    % Fit the linearized IRF
-    
-    pixHist = corrIRF(i, :);
-    % These are the initial guesses for the fit
-    param0 = [correction.IRF.fit.h(i), ...
-              fitParam(2), ...
-              correction.IRF.fit.sigma(i), ...
-              correction.IRF.fit.tau(i), ...
-              correction.IRF.fit.offset(i)];
-    % Run the fit
-    [fitParam(1), ...
-        fitParam(2), ...
-        fitParam(3), ...
-        fitParam(4), ...
-        fitParam(5)] = exgfit(param0);
-    % Find the position of the peak, and the the maximum of the peak
-    % Minimization function
-    mFun = @(x) (-(exGauss(x, ...
-                           fitParam(1), ...
-                           fitParam(2), ...
-                           fitParam(3), ...
-                           fitParam(4), ...
-                           fitParam(5))));
-    % Run minimization routine to find the peak position
-    peakPos(i) = fminsearch(mFun, fitParam(2));
-end
+    binIndex = index(i) + fitRange;
+    currPeak = IRFsmooth(binIndex, i);
 
+    C = correction.IRF.fit.sigma(i) * sqrt(2);  % Sigma * sqrt(2)
+    D = correction.IRF.fit.offset(i);           % Offset
+    A = peak(i) - D;                            % Amplitude
+    % Perform the Gaussian fit
+    %[f1, gof] = fit(fitRange, currPeak, gaussEqn, 'Start', [A, B, C, D]);
+    fp1 = fminsearch(@fitGauss, [A, B, C, D], options);
+    % Deal the results
+    peakPos(i) = index(i) + fp1(2);
+end
 
 %% Run interpolations for the data that was not properly fitted
 % interpolate the FWHM for points that are not fitted well
@@ -283,7 +327,7 @@ aSize(6, :) = aSize(5, :) + [aSize(5, 3), 0, 0, 0];
 h.ax(4) = axes('Units', 'pixels', 'Position', aSize(4, :));
 
 % Create surface data
-corrSurfData = flipud(peakPosInterp .* correction.avgBinWidth);
+corrSurfData = flipud(peakPosInterp .* correction.globalBinWidth.corr);
 % Plot the peak position of the IRF
 h.ax4.surf = surf(corrSurfData);
 % Remove the obscuring lines
@@ -403,3 +447,16 @@ for i = 1 : numel(graphics)
 end
 
 saveas(h.fig, fullfile(folder, 'IRFcorrection.fig'))
+end
+
+function z = fitGauss(p)
+global currPeak
+global fitRange
+%cx = p(1);
+%wx = p(2);
+%amp = p(3);
+
+zx = p(1) * exp(-(fitRange - p(2)) .^ 2 / (p(3) ^ 2)) + p(4) - currPeak;
+
+z = sum(zx.^2);
+end

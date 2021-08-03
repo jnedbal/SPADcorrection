@@ -23,13 +23,17 @@ function analyzeCDM
 %                                     the calibrated bins for each pixel
 %   correction.repPeriod            Experimental laser repetition rate
 %                                     expressed in picoseconds
+%   correction.nrBins               Number of active bins in CDM
+%                                     measurement (2D array)
+%   correction.avgBinWidth          Average bin width of active pixels in
+%                                     CDM measurement (2D array)
+%   correction.globalBinWidth.raw   Linearized bin width in picoseconds
+%                                     calculated from all pixels
 %   correction.avgPhotons           Average number of photons in a time bin
 %                                     for all pixels stored in a 2D array
 %   correction.photonsPerPicosecond Average photon count per picosecond for
 %                                     all pixels stored in a 2D array
 %   correction.binWidth             Actual calibrated bin width for all 
-%                                     pixels stored in a 3D array
-%   correction.idealBinWidth        Calibrated ideal bin width for all
 %                                     pixels stored in a 3D array
 %   correction.INL                  3D array of integral nonlinearity for
 %                                     all calibrated bins and pixels
@@ -39,6 +43,7 @@ function analyzeCDM
 % Examples:
 %   analyzeCDM
 %
+% Toolbox requirement: none
 % Other m-files required: loadCDMdata
 % Subfunctions: none
 % MAT-files required: none, but global variable 'correction' is needed
@@ -48,11 +53,12 @@ function analyzeCDM
 % Jakub Nedbal
 % King's College London
 % Aug 2018
-% Last Revision: 08-May-2020 - Moved data import code into 'loadCDMdata'
+% Last Revision: 15-Apr-2020 - Changed analysis to support global bin width
+% Revision: 08-May-2020 - Moved data import code into 'loadCDMdata'
 % Revision: 02-Feb-2020 - Added support for repeated CDM measurements.
 % Revision: 13-Aug-2018
 %
-% Copyright 2018-2020 Jakub Nedbal
+% Copyright 2018-2021 Jakub Nedbal
 %
 % Redistribution and use in source and binary forms, with or without
 % modification, are permitted provided that the following conditions are
@@ -90,7 +96,7 @@ hwaitbar = waitbar(cn, '', 'Name', 'Processing the data ...');
 %% The one bin is particularly high, which due to zeros from, when the TDCs
 % haven't triggered. Get rid of it.
 % Find the highest bin
-[~, in] = max(sum(sum(correction.CDM, 2), 1));
+[~, in] = max(sum(correction.CDM, [1 2]));
 % Make that bin zero
 correction.CDM(:, :, in) = 0;
 
@@ -109,7 +115,7 @@ correction.CDM = double(correction.CDM);
 % Because there might be some noise, define nonzero as more than 0.1-times
 % the maximum photons
 % Calculate the average value for each bin across all pixels
-avgCDM = mean(mean(correction.CDM, 1), 2);
+avgCDM = mean(correction.CDM, [1, 2]);
 % Find the bins that exceed 0.1-times the average value
 nonzeroBins = avgCDM > max(avgCDM) * 0.1;
 % For each pixel find the median of photons in the nonzero bins
@@ -146,6 +152,8 @@ correction.calibratedBins = LUT >= correction.firstBin + ignoreBins & ...
 %% Convert to repetition period in picoseconds [ps]
 correction.repPeriod = 1e6 / correction.repRate;
 
+%% Calculate the number of bins with CDM in each pixels
+correction.nrBins = correction.lastBin - correction.firstBin + 1;
 
 %% Calculate the average bin width in picoseconds [ps]
 % ******  WARNING   ******
@@ -158,53 +166,57 @@ correction.repPeriod = 1e6 / correction.repRate;
 % will be eventually discarded and and replaced with the corrected results.
 % However, for now they are required for the function fitIRF to work.
 % ******  WARNING  ******
-correction.avgBinWidth = correction.repPeriod ./ ...
-                         (correction.lastBin - correction.firstBin);
-
+correction.avgBinWidth = correction.repPeriod ./ correction.nrBins;
+% Calculate the global bin width used in the linearized data
+correction.globalBinWidth.raw = mean(correction.avgBinWidth, 'all');
 
 %% Calculate the average number of photons per bin for each pixel
 tmpCDM = correction.CDM;
 tmpCDM(zeroMap) = 0;
-correction.avgPhotons = sum(tmpCDM, 3) ./ ...
-                        (correction.lastBin - correction.firstBin + 1);
+correction.avgPhotons = sum(tmpCDM, 3) ./ correction.nrBins;
 
 
 %% Calculate the average number of photons per picosecond
 % This number gives us the number of photons accumulated in each picosecond
-correction.photonsPerPicosecond = correction.avgPhotons ./ ...
-                                  correction.avgBinWidth;
+%correction.photonsPerPicosecond = correction.avgPhotons ./ ...
+%                                  correction.avgBinWidth;
+correction.photonsPerPicosecond = sum(tmpCDM, 3) / correction.repPeriod;
 
 
 %% Calculate the actual bin width for each pixel
 % Create a matrix size of CDM that stacks the photons per picosecond
-photonsPerPicosecond = ...
-    repmat(correction.photonsPerPicosecond, [1 1 CDMsize(3)]);
+%photonsPerPicosecond = ...
+%    repmat(correction.photonsPerPicosecond, [1 1 CDMsize(3)]);
 % Make the photons per picosecond infinite where its outside of the
 % calibrated range. This makes the bin width 0 for those uncalibrated bins.
-photonsPerPicosecond(~correction.calibratedBins) = Inf;
+%photonsPerPicosecond(~correction.calibratedBins) = Inf;
 % Calculate the bin width in.
-correction.binWidth = correction.CDM ./ photonsPerPicosecond;
+%correction.binWidth = correction.CDM ./ photonsPerPicosecond;
+tmpCDM(~correction.calibratedBins) = NaN;
+correction.binWidth = tmpCDM ./ correction.photonsPerPicosecond;
 
 
 %% Create idealized bin width array
-correction.idealBinWidth = ...
-    repmat(correction.avgBinWidth, [1, 1, size(correction.CDM, 3)]);
+%correction.idealBinWidth = ...
+%    repmat(correction.avgBinWidth, [1, 1, size(correction.CDM, 3)]);
 % Make the bin width 0 for bins outside of calibrated range.
-correction.idealBinWidth(~correction.calibratedBins) = 0;
+%correction.idealBinWidth(~correction.calibratedBins) = 0;
 
 
 %% Calculate integral non-linearity
 % This is the accumulated difference of the actual and idealized TDC in 
 % picoseconds
-correction.INL = cumsum(correction.binWidth, 3) - ...
-                 cumsum(correction.idealBinWidth, 3);
+%correction.INL = cumsum(correction.binWidth, 3) - ...
+%                 cumsum(correction.idealBinWidth, 3);
+correction.INL = cumsum(correction.binWidth - correction.avgBinWidth, ...
+                        3, 'omitnan');
 correction.INL(~correction.calibratedBins) = NaN;
 
 
 %% Calculate differential non-linearity
 % This is the difference of the actual and idealized TDC in picoseconds
-correction.DNL = correction.binWidth - correction.idealBinWidth;
-correction.DNL(~correction.calibratedBins) = NaN;
+correction.DNL = correction.binWidth - correction.avgBinWidth;
+%correction.DNL(~correction.calibratedBins) = NaN;
 
 
 %% Close the waitbar

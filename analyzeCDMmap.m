@@ -23,8 +23,9 @@ function analyzeCDMmap(graphics, folder)
 %   of the differential nonlinearity.
 %
 % Examples:
-%   analyzeCDM('PNG', pwd)
+%   analyzeCDMmap('PNG', pwd)
 %
+% Toolbox requirement: none
 % Other m-files required: none
 % Subfunctions: none
 % MAT-files required: none, but global variable 'correction' is needed
@@ -34,7 +35,8 @@ function analyzeCDMmap(graphics, folder)
 % Jakub Nedbal
 % King's College London
 % Aug 2018
-% Last revision: 08-May-2020 - Tidied up the code, added folder argument
+% Last revision: 15-Apr-2021 - Changed support for same bin width
+% Revision: 08-May-2020 - Tidied up the code, added folder argument
 % Revision: 13-Aug-2018
 %
 % Copyright 2018-2020 Jakub Nedbal

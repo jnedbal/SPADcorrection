@@ -13,7 +13,7 @@ function corrHist = resampleHistogramPar(XYZimage)
 %   which carries the calibration data. The function will be modified by
 %   this function.
 %
-%   inputHist is a 3d array of the format XxYxT, where X and Y are SPAD
+%   XYZimage is a 3d array of the format XxYxT, where X and Y are SPAD
 %           array pixel coordinates and T are the TDC histogram values. It
 %           must be same size as the matrices in 'correction'.
 %
@@ -26,6 +26,7 @@ function corrHist = resampleHistogramPar(XYZimage)
 % Examples:
 %   corrHist = resampleHistogramPar(inputHist)
 %
+% Toolbox requirement: Parallel Processing Toolbox (optional)
 % Other m-files required: none
 % Subfunctions: syntheticPhotons.c, extractHistogramData
 % MAT-files required: none, but global variable 'correction' is needed
@@ -35,7 +36,8 @@ function corrHist = resampleHistogramPar(XYZimage)
 % Jakub Nedbal
 % King's College London
 % Aug 2018
-% Last revision: 11-May-2020 - Added support for skew correction
+% Last revision: 15-Apr-2021 - Changed to use global bin width
+% Revision: 11-May-2020 - Added support for skew correction
 % Revision: 11-May-2020 - Tidied up the code
 % Revision: 14-Apr-2020
 %
@@ -76,16 +78,15 @@ extractHistogramData;
 %% Check if parallel processing toolbox is installed and if it makes sense 
 %  using it
 % First check if parallel processing toolbox is available
-isParCompAvailable = ~isempty(ver('distcomp'));
+isParCompAvailable = ~isempty(ver('parallel'));
 % Set the minimum reasonable number of photons to bother with parallel
 % computing (1e9 seems good on a modern PC)
 minPhotons = 1e9;
 % It makes sense to run parallel computing toolbox if there are more than
 % 1B photons
-isParCompHelpful = sum(XYZimage(:)) > minPhotons;
+isParCompHelpful = sum(XYZimage, 'all') > minPhotons;
 
 tic
-
 % Run it in parallel if it is helpful and toolbox is available
 if isParCompAvailable && isParCompHelpful
     % parfor loop has got a peculiar behavior, where it cannot work with
@@ -114,7 +115,7 @@ if isParCompAvailable && isParCompHelpful
                                      firstCalBin(index), ...
                                      lastCalBin(index), ...
                                      realBinWidth(:, index), ...
-                                     linBinWidth(index), ...
+                                     linBinWidth, ...
                                      peakPos(index)); ...
                                      %#ok<PFBNS>
     end
