@@ -203,6 +203,9 @@ peakPos = correction.IRF.peak.Pos;
 % total number of pixels
 numberPixels = size(corrIRF, 2);
 
+%% Make the zero values NaN, this will help later with the fitting
+corrIRF(corrIRF == 0) = NaN;
+
 %% Smoothen the data to find the peaks
 IRFsmooth = smoothdata(corrIRF, 1, ...
                        correction.IRF.fit.param.filter.model, ...
@@ -212,7 +215,8 @@ IRFsmooth = smoothdata(corrIRF, 1, ...
 %% Find the peaks
 [peak, index] = max(IRFsmooth);
 % Setup a zoom of relevant fit data
-fitRange = (-49 : 49)';
+fitRangeFull = (-49 : 49)';
+fitRange = fitRangeFull;
 % Fixed fit parameters
 B = 0;      % Peak Position
 
@@ -278,8 +282,23 @@ for i = find(correction.IRF.fit.goodfit)'
                             datestr(eta, 'HH:MM:SS')));
         end
     end
+    % Use the full range where possible. If the range is outside of the
+    % useful TDC bins, it will be truncated later.
+    fitRange = fitRangeFull;
     binIndex = index(i) + fitRange;
-    currPeak = IRFsmooth(binIndex, i);
+    % If the peak is too close to the start, negative indices of the IRF
+    % will be called and result in an error, for this purpose, only
+    % positive indices can be selected.
+    validIndex = binIndex > 0;
+    currPeak = corrIRF(binIndex(validIndex), i);
+    fitRange = fitRange(validIndex);
+    % If the selected fit range is outside the measured TDC bins, truncate
+    % the range accordingly.
+    validIndex = currPeak > 0;
+    currPeak = currPeak(validIndex);
+    fitRange = fitRange(validIndex);
+    %currPeak = corrIRF(binIndex, i);
+    
 
     C = correction.IRF.fit.sigma(i) * sqrt(2);  % Sigma * sqrt(2)
     D = correction.IRF.fit.offset(i);           % Offset

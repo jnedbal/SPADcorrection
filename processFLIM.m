@@ -742,7 +742,7 @@ for i = 1 : numel(setting.FLIMfile)
     % Store the file name
     fitResult.in(i).fname = setting.FLIMfile{i};
     % Load the data
-    load(setting.FLIMfile{i})
+    load(setting.FLIMfile{i}, 'XYZimage')
     % Run the linearization and skew correction routine
     corrHist = resampleHistogramPar(XYZimage);
 

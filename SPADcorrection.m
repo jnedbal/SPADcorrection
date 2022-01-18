@@ -357,7 +357,7 @@ end
 
 
 %% Save the calibration data in a file
-% SAve two files. One adding full. This is a large file with all the data
+% Save two files. One adding full. This is a large file with all the data
 % contained within. Then there is another file, which contains the minimum
 % amount of data for faster loading and less memory demand.
 [path, fname, ext] = fileparts(correction.files.binCorrection);
