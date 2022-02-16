@@ -94,7 +94,8 @@ end
 % Keep the list of filenames stored for future reference
 % correction.files.CDMfiles = filenames;
 % Find indices of all filenames matching the input
-fileIndex = find(~cellfun(@isempty, regexp(inputFiles, SPADfiles)));
+% fileIndex = find(~cellfun(@isempty, regexp(inputFiles, SPADfiles)));
+fileIndex = find(strcmp(inputFiles, SPADfiles));
 % assume that this is a link to the file containing the CDM data
 % Check that the file exists, that means the index matrix in not empty
 assert(~isempty(fileIndex), 'File %s does not exist.', SPADfiles)
