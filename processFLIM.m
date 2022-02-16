@@ -144,7 +144,7 @@ function [fitResult, setting] = processFLIM(setting)
 % Examples:
 %   processFLIM
 %
-% Other m-files required: exportICS2, mxSlimCurve, resampleHistogramPar,
+% Other m-files required: exportICS3, mxSlimCurve, resampleHistogramPar,
 %                         saveIRF, displayFLIM
 % Subfunctions: check_call, fit_call, irf_call, ok_call
 % MAT-files required: Selected by 'setting.FLIMfile' field or by 
@@ -830,7 +830,7 @@ for i = 1 : numel(setting.FLIMfile)
                 % Set the new filename
                 fitResult.out(i).ICSfile = strcat(path, file);
                 % Save the file
-                exportICS2(fitResult.in(i).transient, ...
+                exportICS3(fitResult.in(i).transient, ...
                            fitResult.out(i).ICSfile, ...
                            range);
             else
@@ -839,7 +839,7 @@ for i = 1 : numel(setting.FLIMfile)
             end
         else
             % If the file doesn't exist yet, save it directly
-            exportICS2(fitResult.in(i).transient, ...
+            exportICS3(fitResult.in(i).transient, ...
                        fitResult.out(i).ICSfile, ...
                        range);
         end
@@ -862,6 +862,10 @@ if setting.saveIRF || setting.saveLM
         % Create a filename that is the combination of the first and last
         % file in the analyzed batch
         filename = fullfile(path, [file1, '--', file2]);
+        % If filename is too long, make it shorter
+        if numel(filename) > 250
+            filename = fullfile(path, [file1, '--etc']);
+        end
     end
 end
 % End of "Create a combined filename for IRF file and/or MAT file with the

@@ -220,6 +220,34 @@ else
     correction.files.IRF = strcat(path, file);
 end
 
+% Check if correction against different IRF file is needed
+ButtonName = ...
+    questdlg('IRF Correction on Same IRF or Load a different one?', ...
+             'IRF Correction', 'Same', 'Load New', 'Same');
+switch ButtonName
+    case 'Same'
+        correction.files.IRFtest = [];
+    case 'Load New'
+        % Locate the IRF file
+        [file, path] = uigetfile({'*.mat', 'MATLAB Files (*.mat)'; ...
+                                  '*.*', 'All Files (*.*)'}, ...
+                                 'Select Perormance Test IRF file(s)', ...
+                                 'MultiSelect', 'on');
+
+        % Keep the file empty if there is no IRF to process
+        if isequal(file, 0) || isequal(path, 0)
+            correction.files.IRFtest = [];
+        else
+            % Store the IRF file name(s) for later
+            % correction.files.IRF = fullfile(path, file);
+            correction.files.IRFtest = strcat(path, file);
+            % load the IRF that will be cross-checked
+            correction.IRF.rawTest = ...
+                loadSPADdata(correction.files.IRFtest);
+        end
+    otherwise
+        return
+end
 
 % Locate the DCR file
 [file, path] = uigetfile({'*.mat', 'MATLAB Files (*.mat)'; ...
@@ -392,3 +420,5 @@ fprintf(['Saving results into file %s.\n', ...
 % save the results
 save(correction.files.binCorrection, '-struct', 'S', '-v7.3')
 clear S;
+% Reset default figure settings
+reset(0)

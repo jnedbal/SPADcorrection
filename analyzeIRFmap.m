@@ -188,7 +188,11 @@ hwaitbar = waitbar(0, '', ...
 hwaitbar.Position(4) = hwaitbar.Position(4) + 10;
 
 % Run the linearization routine
-corrIRF = resampleHistogramPar(correction.IRF.raw);
+if isempty(correction.files.IRFtest)
+    corrIRF = resampleHistogramPar(correction.IRF.raw);
+else
+    corrIRF = resampleHistogramPar(correction.IRF.rawTest);
+end
 corrIRF = reshape(corrIRF, ...
                   size(corrIRF, 1) * size(corrIRF, 2), size(corrIRF, 3))';
 corrIRF = double(corrIRF);
