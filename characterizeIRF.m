@@ -1,10 +1,10 @@
 function characterizeIRF(XYZimage)
-% fitIRF fits an Gaussian to the IRF to find its peak
+% characterizeIRF fits an Gaussian to the IRF to find its peak
 % A measurement of the instrument response function is done using the SPAD
 % camera. Use a pulsed laser, quenched fluorescein, and accumulate many
 % frames into a single histogram map.
 %
-% Syntax: fitIRF(XYZimage)
+% Syntax: characterizeIRF(XYZimage)
 %
 % Inputs:
 %   The function requires a 3D array, where 1st and 2nd dimensions

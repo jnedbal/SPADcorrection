@@ -130,7 +130,7 @@ corrHist = resampleHistogramPar(XYZimage);
 corrHist = double(corrHist);
 XYZimage = double(XYZimage);
 
-%% calculate the standard deviations of the raw and corrected CDM 
+%% Calculate the standard deviations of the raw and corrected CDM 
 %  normalized by the square root of their sums
 
 rawSTD = zeros(size(corrHist, 1), size(corrHist, 2));
@@ -519,7 +519,7 @@ h.ax.rawSTD.ZLim = zlim;
 h.ax.corrSTD.ZLim = zlim;
 
 
-%% SAve the figures
+%% Save the figures
 
 % A cell with with graphics formats
 formats = {'png', '-dpng'; 'eps', '-depsc'; 'pdf', '-dpdf'};
@@ -538,6 +538,7 @@ for j = 1 : numel(fnames)
               sprintf(fnames{j}, formats{ftype, 1}),...
               formats{ftype, 2})
     end
+    saveas(h.fig(j), sprintf(fnames{j}, 'fig'), 'fig')
 end
 
 
