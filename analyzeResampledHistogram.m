@@ -217,7 +217,7 @@ h.line.hist = plot(Xdata(:, 3), Ydata);
 h.ax.hist.XLim = Xdata([1 end], 3);
 
 title(h.ax.hist, 'Normalized Code Density Map (Pixel [1, 1])')
-ylabel(h.ax.hist, 'Photon Probability Densisty')
+ylabel(h.ax.hist, 'Photon Probability Density')
 xlabel(h.ax.hist, 'TDC Bin Index')
 h.leg.hist = legend('Raw', 'Corrected', ...
                     'Location', 'SouthOutside', ...
@@ -538,6 +538,9 @@ for j = 1 : numel(fnames)
               sprintf(fnames{j}, formats{ftype, 1}),...
               formats{ftype, 2})
     end
+    % If error occurs, go to Home -> Environment -> Preferences -> General
+    % -> MAT files
+    % Select the -v7.3 option.
     saveas(h.fig(j), sprintf(fnames{j}, 'fig'), 'fig')
 end
 

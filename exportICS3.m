@@ -1,10 +1,11 @@
 function exportICS3(utimeHist, fname, range, binWidth)
-% EXPORTICS2 is a code for saving microtime histograms into ICS image
+% EXPORTICS3 is a code for saving microtime histograms into ICS image
 % format for use with the TRI2 software
 % It requires having the dip_image library installed and loaded.
 %
 % Inputs:
-%   utimeHist: Microtime histogram in the format YxXxT
+%   utimeHist: Microtime histogram in the format YxXxT. Use Matlab, not
+%              dip_image matrix with range between 0 and 65535.
 %   fname:     Filename of the file into which the data should be saved
 %   range:     The time range of the histogram in seconds, 
 %              i.e. number of bins * bin width
@@ -23,11 +24,12 @@ function exportICS3(utimeHist, fname, range, binWidth)
 %% Jakub Nedbal
 % King's College London
 %
-% Last Revision: 04-Feb-2022 - added support for writeics in newer DIPimage
+% Last Revision: 30-Aug-2023 - changed help
+%                04-Feb-2022 - added support for writeics in newer DIPimage
 %                              versions
 %                14-May-2020
 %
-% Copyright 2020-22 Jakub Nedbal
+% Copyright 2020-23 Jakub Nedbal
 %
 % Redistribution and use in source and binary forms, with or without
 % modification, are permitted provided that the following conditions are
